@@ -1,0 +1,1127 @@
+﻿using namespace std;
+
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+
+#include <iostream>
+#include <yaml-cpp/yaml.h>
+#include "ConfigOperations.h"
+#include "GeneralUtils.h"
+
+#include <windows.h>
+#include <stdio.h>
+#include <map>
+#include <vector>
+#include <cstdlib>
+#include <thread>
+#include <string>
+#include <conio.h> // ig for _getch
+#include <dwmapi.h>
+
+#pragma comment(lib, "Dwmapi.lib")
+
+class WindowGroup;
+
+void deleteWindowGroup(WindowGroup* wg);
+
+map<HWND, WindowGroup*> referenceToGroup;
+map<WindowGroup*, int> groupToKey;
+WindowGroup* lastGroup;
+bool hideNotMainWindows = false;
+
+int currentHangWindows = 0;
+
+wstring rx_name = L"Roblox";
+//wstring vmware_name_part = L"VMware Workstation"; // I needed that
+//wstring mc_name_part = L"Minecraft"; // And this too lmao
+
+string defaultMacroKey;
+int macroDelayInitial;
+int macroDelayAfterSwitching;
+int macroDelayAfterFocus;
+int macroDelayAfterKeyPress;
+int macroDelayAfterKeyRelease;
+bool macroJustHoldWhenSingleWindow;
+vector<string> defaultFastForegroundWindows;
+
+// Should have a better system later, just afraid to add more vectors due to danger of leaks and the fact that I need to make a good config
+
+//string mainConfigName = "WsSettings/settings.yml";
+
+bool checkHungWindow(HWND hwnd) {
+    if (IsHungAppWindow(hwnd)) {
+        currentHangWindows += 1;
+        return true;
+    }
+    return false;
+}
+
+void hungWindowsAnnouncement() {
+    if (currentHangWindows != 0) {
+        string s = "Detected " + to_string(currentHangWindows) + " not responding window";
+        if (currentHangWindows > 1) s += "s";
+        s += " during the last operation and skipped them";
+        cout << s << endl;
+        currentHangWindows = 0;
+    }
+}
+
+class WindowGroup {
+private:
+    vector<HWND> hwnds;
+    int index = 0;
+
+public:
+    vector<HWND> getOthers() {
+        vector<HWND> v;
+        removeClosedWindows();
+        if (&hwnds == NULL || hwnds.size() == 0) return v;
+        for (int i = 0; i < hwnds.size(); i++) {
+            if (i != index) v.push_back(hwnds[i]);
+        }
+        return v;
+    }
+
+    HWND getCurrent() {
+        removeClosedWindows();
+        if (&hwnds == NULL || hwnds.size() == 0) return NULL;
+        return hwnds[index];
+    }
+
+    bool containsWindow(HWND hwnd) {
+        removeClosedWindows();
+        return (find(hwnds.begin(), hwnds.end(), hwnd) != hwnds.end());
+    }
+
+    void addWindow(HWND hwnd) {
+        if (containsWindow(hwnd)) return;
+        removeClosedWindows();
+        hwnds.push_back(hwnd);
+        if (hideNotMainWindows && index != hwnds.size() - 1) {
+            if (!checkHungWindow(hwnd)) ShowWindow(hwnd, SW_HIDE);
+        }
+        //testPrintHwnds();
+    }
+
+    void removeWindow(HWND hwnd) {
+        if (&hwnds == NULL || hwnds.size() == 0) return;
+        removeClosedWindows();
+        //cout << "removeWindow " << hwnds.size() << " " << hwnd;
+        bool main = false;
+        if (hwnd == hwnds[index]) main = true;
+        referenceToGroup.erase(referenceToGroup.find(hwnd));
+        hwnds.erase(std::remove(hwnds.begin(), hwnds.end(), hwnd), hwnds.end());
+        if (hwnds.size() == 0) deleteWindowGroup(this);
+        if (main) shiftWindows(-1);
+        fixIndex();
+    }
+
+    void shiftWindows(int times) {
+        if (&hwnds == NULL) return;
+        removeClosedWindows();
+        if (hwnds.size() == 0) return;
+        HWND oldHwnd = getCurrent();
+        if (times >= 0) {
+            index = (index + times) % hwnds.size();
+        }
+        else {
+            index = (hwnds.size() * (-1 * times) + index + times) % hwnds.size();
+        }
+        if (hideNotMainWindows) {
+            //cout << oldHwnd << " " << getCurrent() << endl;
+            HWND newHwnd = getCurrent();
+            if (!checkHungWindow(newHwnd)) ShowWindow(newHwnd, SW_SHOW);
+            if (!checkHungWindow(oldHwnd)) ShowWindow(oldHwnd, SW_HIDE);
+        }
+    }
+
+    void fixIndex() {
+        if (&hwnds == NULL) return;
+        if (hwnds.size() == 0) index = 0;
+        else index = index % hwnds.size();
+    }
+
+    void removeClosedWindows() {
+        if (&hwnds == NULL || hwnds.size() == 0) return;
+        for (int i = 0; i < hwnds.size(); i++) {
+            if (&hwnds[i] && !IsWindow(hwnds[i])) {
+                referenceToGroup.erase(referenceToGroup.find(hwnds[i]));
+                hwnds.erase(hwnds.begin() + i);
+            }
+        }
+        fixIndex();
+    }
+
+    void hideOrShowOthers() {
+        vector<HWND> others = getOthers();
+        for (auto& it : others) {
+            if (!checkHungWindow(it)) {
+                if (hideNotMainWindows) {
+                    ShowWindow(it, SW_HIDE);
+                }
+                else {
+                    ShowWindow(it, SW_SHOW);
+                }
+            }
+        }
+    }
+
+    void testPrintHwnds() {
+        for (auto& hwnd : hwnds) {
+            cout << "HWND " << &hwnd << endl;
+        }
+    }
+
+    int size() {
+        return hwnds.size();
+    }
+
+    void moveInOrder(HWND* hwnd, int times) {}
+};
+
+void registerHotkeys() {
+    int totalHotkeys = 28;
+
+    int failed = 0;
+    if (RegisterHotKey(NULL, 1, MOD_ALT | MOD_NOREPEAT, 0xBC)) { wprintf(L"Hotkey 'Alt + ,': Add window to current group\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 2, MOD_ALT | MOD_NOREPEAT, 0xBE)) { wprintf(L"Hotkey 'Alt + .': Prepare for the next group\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 11, MOD_ALT | MOD_NOREPEAT, 0x49)) { wprintf(L"Hotkey 'Alt + I': Edit the window's group\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 3, MOD_ALT | MOD_NOREPEAT, 0x4B)) { wprintf(L"Hotkey 'Alt + K': Shift windows to the left\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 4, MOD_ALT | MOD_NOREPEAT, 0x4C)) { wprintf(L"Hotkey 'Alt + L': Shift windows to the right\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 5, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4B)) { wprintf(L"Hotkey 'Ctrl + Alt + K': Shift ALL windows to the left\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 6, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4C)) { wprintf(L"Hotkey 'Ctrl + Alt + L': Shift ALL windows to the right\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 26, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4B)) { wprintf(L"Hotkey 'Ctrl + Shift + K': Shift ALL OTHER groups to the left\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 27, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4C)) { wprintf(L"Hotkey 'Ctrl + Shift + L': Shift ALL OTHER groups to the right\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 7, MOD_ALT | MOD_NOREPEAT, 0xDD)) { wprintf(L"Hotkey 'Alt + ]': Remove current window from it's group (Critical Bug)\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 8, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0xDD)) { wprintf(L"Hotkey 'Ctrl + Alt + ]': Delete the entire group current window is in\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 15, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0xDB)) { wprintf(L"Hotkey 'Ctrl + Shift + [': Delete all groups\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 9, MOD_ALT | MOD_NOREPEAT, 0x51)) { wprintf(L"Hotkey 'Alt + Q': Toggle visibility of the opposite windows in this group (NOT SOON WIP)\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 13, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x51)) { wprintf(L"Hotkey 'Ctrl + Alt + Q': Toggle visibility of all not main windows (May not work properly yet with Auto-key macro)\n"); }
+    else failed++;
+    // ctrl shift a do current alt a, but that one should leave window updating in background
+    if (RegisterHotKey(NULL, 10, MOD_ALT | MOD_NOREPEAT, 0x41)) { wprintf(L"Hotkey 'Alt + A': Toggle visibility of every last window in all the pairs and minimize the linked ones\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 18, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x44)) { wprintf(L"Hotkey 'Ctrl + Shift + D': Set the window as main in current group (WIP)\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 19, MOD_ALT | MOD_NOREPEAT, 0x44)) { wprintf(L"Hotkey 'Alt + D': Swap to main window in current group (WIP)\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 23, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x44)) { wprintf(L"Hotkey 'Ctrl + Alt + D': Swap to main window in all groups (WIP)\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 12, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + Alt + U': Get all RBX and VMWW windows back from background\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 24, MOD_CONTROL | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + U': Put current foregrounded window to background\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 25, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + Shift + U': Get specific windows from background by their name\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 16, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Ctrl + Shift + V': Start/Stop adjusting new RBX windows to screen quarters (NOT SOON WIP)\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 14, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Ctrl + Alt + V': Connect all RBX windows to quarter groups\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 30, MOD_ALT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Alt + V': Connect absolutely all RBX windows\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 28, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x41)) { wprintf(L"Hotkey 'Ctrl + Shift + A': Show all connected windows to foreground\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 17, MOD_ALT | MOD_NOREPEAT, 0x47)) { wprintf(L"Hotkey 'Alt + G': Start/stop the Auto-Key macro for RBX windows\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 29, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x47)) { wprintf(L"Hotkey 'Ctrl + Alt + G': Set the Auto-Key for this group\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 31, MOD_ALT | MOD_NOREPEAT, 0x48)) { wprintf(L"Hotkey 'Alt + H': Reload all configs\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 20, MOD_ALT | MOD_NOREPEAT, 0x50)) { wprintf(L"Hotkey 'Alt + P': Show the debug list of the linked windows\n"); }
+    else failed++;
+    if (RegisterHotKey(NULL, 21, MOD_ALT | MOD_NOREPEAT, 0xDC)) { wprintf(L"Hotkey 'Alt + \\': Test\n"); }
+    else failed++;
+
+    if (failed > 0) {
+        cout << "Failed to register " << failed << " hotkey";
+        if (failed > 1) cout << "s";
+        cout << endl;
+        if (failed >= totalHotkeys) { // that value can be not updated in time
+            cout << "Most likely you have started multiple instances of this programm, sadly you can use only one at a time\n";
+            _getch();
+            exit(0);
+        }
+    }
+
+    //if (RegisterHotKey(NULL, 22, MOD_ALT | MOD_NOREPEAT, 0xDC)) { wprintf(L"Hotkey 'Alt + N': Start/Stop sending messages in RBX chat\n"); }
+    cout << endl;
+}
+
+std::map<std::string, int> mapOfKeys = {
+    {"q",0x10},
+    {"w",0x11},
+    {"e",0x12},
+    {"r",0x13},
+    {"t",0x14},
+    {"y",0x15},
+    {"u",0x16},
+    {"i",0x17},
+    {"o",0x18},
+    {"p",0x19},
+    {"[",0x1A},
+    {"]",0x1B},
+    {"enter",0x1C},
+    {"ctrl_left",0x1D},
+    {"ctrl",0x1D}, // dublicate by default
+    {"a",0x1E},
+    {"s",0x1F},
+    {"d",0x20},
+    {"f",0x21},
+    {"g",0x22},
+    {"h",0x23},
+    {"j",0x24},
+    {"k",0x25},
+    {"l",0x26},
+    {";",0x27},
+    {"'",0x28},
+    {"`",0x29},
+    {"shift_left",0x2A},
+    {"shift",0x2A}, // just in case
+    {"\\",0x2B},
+    {"z",0x2C},
+    {"x",0x2D},
+    {"c",0x2E},
+    {"v",0x2F},
+    {"b",0x30},
+    {"n",0x31},
+    {"m",0x32},
+    {",",0x33},
+    {".",0x34},
+    {"/",0x35},
+    {"shift_right",0x36},
+    //
+    {"alt_left",0x38},
+    {"alt",0x38}, // dublicate. For now no combinations btw
+    {"space",0x39},
+};
+
+WindowGroup* getGroup(HWND hwnd) {
+    if (referenceToGroup.count(hwnd)) {
+        map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(hwnd);
+        WindowGroup* wg = it->second;
+        return wg;
+    }
+    //else return NULL;
+}
+
+void ShowOnlyMainInGroup(WindowGroup* wg) {
+    vector<HWND> others = (*wg).getOthers();
+    vector<HWND>::iterator iter;
+    for (iter = others.begin(); iter != others.end(); ++iter) {
+        //cout << *iter << " MINIMIZE" << endl;
+        if (!hideNotMainWindows) {
+            if (!checkHungWindow(*iter)) ShowWindow(*iter, SW_MINIMIZE);
+        }
+    }
+    HWND c = (*wg).getCurrent();
+    //cout << c << " SW_RESTORE" << endl;
+    if (IsIconic(c)) {
+        if (!checkHungWindow(c)) ShowWindow(c, SW_RESTORE); // what does it return if just z order far away but not minimized, maybe detect large windows above it
+    }
+}
+
+void ShowOnlyMainInGroup(HWND hwnd) {
+    if (referenceToGroup.count(hwnd)) {
+        map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(hwnd);
+        ShowOnlyMainInGroup(it->second);
+    }
+}
+
+void shiftGroup(WindowGroup* group, int shift) {
+    (*group).shiftWindows(shift);
+    ShowOnlyMainInGroup(group);
+}
+
+void shiftGroup(HWND hwnd, int shift) {
+    WindowGroup* wg = nullptr;
+    wg = getGroup(hwnd); // delete pointers?
+    shiftGroup(wg, shift);
+}
+
+wstring getWindowName(HWND hwnd) {
+    int length = GetWindowTextLength(hwnd);
+    wchar_t* buffer = new wchar_t[length + 1];
+    GetWindowTextW(hwnd, buffer, length + 1);
+    wstring ws(buffer);
+    return ws; // not nullptr later?
+}
+
+void shiftAllGroups(int shift) {
+    vector<WindowGroup*> used;
+    map<HWND, WindowGroup*>::iterator it;
+
+    for (it = referenceToGroup.begin(); it != referenceToGroup.end(); it++) {
+        if (used.empty() || !(find(used.begin(), used.end(), it->second) != used.end())) {
+            shiftGroup(it->second, shift);
+            used.push_back(it->second); // is * refering to it or it->second?
+        }
+    }
+}
+
+void shiftAllOtherGroups(int shift) {
+    vector<WindowGroup*> used;
+    map<HWND, WindowGroup*>::iterator it;
+
+    HWND h = GetForegroundWindow();
+
+    for (it = referenceToGroup.begin(); it != referenceToGroup.end(); it++) {
+        if (used.empty() || !(find(used.begin(), used.end(), it->second) != used.end())) {
+            //cout << (h == it->first) << endl;
+            //wcout << getWindowName(it->first) << endl;
+            //wcout << getWindowName(h) << endl;
+            //cout << it->second << endl;
+            //cout << referenceToGroup[h] << endl << endl;
+            //cout << (referenceToGroup[h] == it->second) << endl;
+            if (referenceToGroup[h] != it->second) shiftGroup(it->second, shift);
+            used.push_back(it->second); // is * refering to it or it->second?
+        }
+    }
+
+    SetForegroundWindow(h);
+
+    cout << endl;
+}
+
+void deleteWindow(HWND hwnd) {
+    if (referenceToGroup.count(hwnd)) {
+        WindowGroup* wg = referenceToGroup.find(hwnd)->second;
+        (*wg).removeWindow(hwnd);
+        referenceToGroup.erase(referenceToGroup.find(hwnd));
+    }
+}
+
+void deleteWindowGroup(WindowGroup* wg) {
+    /*for (auto& p : referenceToGroup)
+        cout << p.first << " " << p.second << " " << endl;*/
+    map<HWND, WindowGroup*>::iterator it;
+    for (auto it = referenceToGroup.begin(); it != referenceToGroup.end(); ) {
+        if (wg == it->second) {
+            it = referenceToGroup.erase(it);
+        }
+        else {
+            ++it; // can have a bug
+        }
+    }
+    //delete(wg); // ?
+}
+
+void deleteWindowGroup(HWND hwnd) {
+    if (referenceToGroup.count(hwnd)) {
+        deleteWindowGroup(referenceToGroup.find(hwnd)->second);
+    }
+}
+
+void SwapVisibilityForAll() {
+    vector<WindowGroup*> used;
+    map<HWND, WindowGroup*>::iterator it;
+
+    vector<HWND> main;
+    vector<HWND> other;
+
+    for (it = referenceToGroup.begin(); it != referenceToGroup.end(); it++) {
+        //if (IsHungAppWindow(it->first)) cout << "Hang up window 8" << endl;
+        if (used.empty() || !(find(used.begin(), used.end(), it->second) != used.end())) {
+            WindowGroup* wg = it->second;
+            main.push_back((*wg).getCurrent());
+            vector<HWND> others = (*wg).getOthers();
+            vector<HWND>::iterator iter;
+            for (iter = others.begin(); iter != others.end(); ++iter) {
+                other.push_back(*iter);
+            }
+
+            used.push_back(it->second); // is * refering to it or it->second?
+        }
+    }
+
+    int minizimed = 0;
+    for (auto& it : main) {
+        if (IsIconic(it)) {
+            minizimed++;
+        }
+    }
+
+    for (auto& it : main) {
+        if (!checkHungWindow(it)) {
+            if (minizimed == main.size()) { // all hidden, show
+                //if (IsHungAppWindow(it)) cout << "Hang up window 4" << endl;
+                if (IsIconic(it)) {
+                    //if (IsHungAppWindow(it)) cout << "Hang up window 5" << endl;
+                    ShowWindow(it, SW_RESTORE);
+                }
+            }
+            else {
+                //if (IsHungAppWindow(it)) cout << "Hang up window 6" << endl;
+                ShowWindow(it, SW_MINIMIZE);
+            }
+        }
+    }
+
+    for (auto& it : other) {
+        //if (IsHungAppWindow(it)) cout << "Hang up window 7" << endl;
+        if (!checkHungWindow(it)) ShowWindow(it, SW_MINIMIZE); // later add "hide" and "show" mode, after working window enumeration to get them back
+    }
+}
+
+void checkClosedWindows() {
+    bool br = false;
+    for (const auto& it : referenceToGroup) {
+        if (it.first != NULL) {
+            if (!IsWindow(it.first)) {
+                if (it.second != nullptr) it.second->removeClosedWindows();
+                br = true;
+                break;
+            }
+        }
+    }
+    if (br) checkClosedWindows();
+}
+
+static BOOL CALLBACK enumWindowCallback(HWND hwnd, LPARAM lparam) {
+    //int length = GetWindowTextLength(hwnd); // WindowName
+    //wchar_t* buffer = new wchar_t[length + 1];
+    //GetWindowTextW(hwnd, buffer, length + 1);
+    //wstring ws(buffer);
+
+    wstring ws = getWindowName(hwnd);
+    string str(ws.begin(), ws.end());
+
+    // List visible windows with a non-empty title
+    //if (IsWindowVisible(hwnd) && length != 0) {
+    //    wcout << hwnd << ":  " << ws << endl;
+    //}
+
+    //if (ws == rx_name) {
+    //    if (!checkHungWindow(hwnd)) ShowWindow(hwnd, SW_SHOW);
+    //}
+    //else {
+        for (auto& it : defaultFastForegroundWindows) {
+            if (str.find(it) != wstring::npos) {
+                if (!checkHungWindow(hwnd)) ShowWindow(hwnd, SW_SHOW); //cout << GetLastError() << endl;
+                //cout << "RBX HERE " << str << endl;
+            }
+        }
+    //}
+
+    //EnumChildWindows(hwnd, enumWindowCallback, NULL); //TODO ?
+    //cout << "Good\n";
+
+    return TRUE;
+}
+
+void showAllRx() {
+    //cout << "Enmumerating windows..." << endl;
+    hideNotMainWindows = false;
+    EnumWindows(enumWindowCallback, NULL);
+    //cout << "Done\n";
+}
+
+void restoreAllConnected() {
+    hideNotMainWindows = false;
+    for (const auto& it : referenceToGroup) {
+        if (it.first != NULL && !checkHungWindow(it.first)) {
+            ShowWindow(it.first, SW_MINIMIZE); // bad way // though not that much lol
+            ShowWindow(it.first, SW_RESTORE);
+        }
+    }
+}
+
+void keyPress(WORD keyCode)
+{
+    INPUT input;
+    input.type = INPUT_KEYBOARD;
+    input.ki.wScan = keyCode;
+    input.ki.dwFlags = KEYEVENTF_SCANCODE;
+
+    SendInput(1, &input, sizeof(INPUT));
+}
+
+void keyRelease(WORD keyCode)
+{
+    INPUT input;
+    input.type = INPUT_KEYBOARD;
+    input.ki.wScan = keyCode;
+    input.ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+
+    SendInput(1, &input, sizeof(INPUT));
+}
+
+void pressE(HWND hwnd) {
+    int key = mapOfKeys[defaultMacroKey]; // 0x12
+    if (groupToKey.count(referenceToGroup[hwnd])) {
+        key = groupToKey[referenceToGroup[hwnd]];
+    }
+    //cout << "test\n";
+    //cout << "key: " << key << endl;
+
+    SetForegroundWindow(hwnd);
+    Sleep(macroDelayAfterSwitching);
+    SetFocus(hwnd);
+
+    Sleep(macroDelayAfterFocus);
+
+    keyPress(key);
+    Sleep(macroDelayAfterKeyPress);
+    keyRelease(key);
+
+    Sleep(macroDelayAfterKeyRelease);
+}
+
+vector<HWND> autoGroup1;
+vector<HWND> autoGroup2;
+vector<HWND> autoGroup3;
+vector<HWND> autoGroup4;
+vector<HWND> autoGroupAllWindows;
+
+void addWindowNoMatterWhat(HWND hwnd) {
+    if (checkHungWindow(hwnd)) return;
+    bool openCmdLater = false;
+    if (IsIconic(hwnd)) {
+        ShowWindow(hwnd, SW_RESTORE); // didn't put MINIMIZE before and without if statement bc this entire piece of code is more like a workaround than a feature
+        if (!IsIconic(GetConsoleWindow())) {
+            openCmdLater = true;
+        }
+    }
+    autoGroupAllWindows.push_back(hwnd);
+}
+
+void distributeRxHwndsToGroups(HWND hwnd) {
+    if (checkHungWindow(hwnd)) return;
+    RECT r = { NULL };
+    bool openCmdLater = false;
+    if (IsIconic(hwnd)) {
+        //if (IsHungAppWindow(hwnd)) cout << "Hang up window 3'" << endl;
+        ShowWindow(hwnd, SW_RESTORE); // didn't put MINIMIZE before and without if statement bc this entire piece of code is more like a workaround than a feature
+        //if (IsHungAppWindow(hwnd)) cout << "Hang up window 4'" << endl;
+        if (!IsIconic(GetConsoleWindow())) {
+            //if (IsHungAppWindow(hwnd)) cout << "Hang up window 5'" << endl;
+            openCmdLater = true;
+        }
+    }
+    Sleep(1);
+    DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &r, sizeof(RECT));
+    // GetWindowRect(hwnd, &r)
+    //cout << r.left << " " << r.top << " " << r.right << " " << r.bottom << " " << endl;
+
+    RECT desktop;
+    SystemParametersInfo(SPI_GETWORKAREA, 0, &desktop, 0);
+    int desktopX = desktop.right;
+    int desktopY = desktop.bottom;
+
+    //if (IsHungAppWindow(hwnd)) cout << "Hang up window 3" << endl;
+    //if (r.left == -7 && r.top == 0 && r.right == 967 && r.bottom == 527) autoGroup1.push_back(hwnd); // Explorer window
+    //cout << r.right - r.left << "   " << r.bottom - r.top << endl;
+    if (r.right - r.left == desktopX / 2 && (r.bottom - r.top == 638 || r.bottom - r.top == 631)) { // 631 is considered as height when at the top, check on different Windows versions and
+        if (r.left == 0 && r.top == 0) autoGroup1.push_back(hwnd); // actual sizes         // find out which one doesn't work and change to + or - border size //TODO
+        else if (r.left == desktopX / 2 && r.top == 0) autoGroup2.push_back(hwnd);
+        else if (r.left == 0 && r.top == desktopY - 638) autoGroup3.push_back(hwnd);
+        else if (r.left == desktopX / 2 && r.top == desktopY - 638) autoGroup4.push_back(hwnd);
+    }
+
+    if (openCmdLater) {
+        /*cout << "restoring\n";
+        Sleep(1);
+        if(IsIconic(GetConsoleWindow())) ShowWindow(GetConsoleWindow(), SW_RESTORE);*/
+    }
+}
+
+static BOOL CALLBACK rxConnectivityCallback(HWND hwnd, LPARAM lparam) {
+    //int length = GetWindowTextLength(hwnd); // WindowName
+    //wchar_t* buffer = new wchar_t[length + 1];
+    //GetWindowTextW(hwnd, buffer, length + 1);
+    //wstring ws(buffer);
+    //string str(ws.begin(), ws.end());
+
+    //if(IsWindowVisible(hwnd))
+    // 
+    //wcout << "\"" << ws << "\"" << endl;
+    //cout << str << endl;
+
+    wstring ws = getWindowName(hwnd);
+
+    if (ws == rx_name) { // ws == L"HangApp"
+        distributeRxHwndsToGroups(hwnd);
+        //cout << "Found!\n";
+    }
+
+    //EnumChildWindows(hwnd, enumWindowCallback, NULL); //TODO ?
+    return TRUE;
+}
+
+static BOOL CALLBACK rxConnectivityCompletelyAllCallback(HWND hwnd, LPARAM lparam) {
+    //int length = GetWindowTextLength(hwnd); // Window Name
+    //wchar_t* buffer = new wchar_t[length + 1];
+    //GetWindowTextW(hwnd, buffer, length + 1);
+    //wstring ws(buffer);
+    wstring ws = getWindowName(hwnd);
+
+    //string str(ws.begin(), ws.end());
+
+    if (ws == rx_name) {
+        addWindowNoMatterWhat(hwnd);
+    }
+
+    return TRUE;
+}
+
+int createSingleConnectedGroup(vector<HWND>* windows) {
+    if (windows->size() == 0) return 0;
+    WindowGroup* wg;
+    wg = new WindowGroup();
+    int amount = 0;
+    for (auto& w : *windows) {
+        if (referenceToGroup.count(w)) {
+            map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(w);
+            referenceToGroup.find(w)->second->removeWindow(w);
+            //referenceToGroup.erase(referenceToGroup.find(w));
+        }
+        wg->addWindow(w);
+        referenceToGroup[w] = wg;
+        amount++;
+    }
+    return amount;
+}
+
+int createConnectedGroups() {
+    int amount = 0;
+    amount += createSingleConnectedGroup(&autoGroup4);
+    amount += createSingleConnectedGroup(&autoGroup3);
+    amount += createSingleConnectedGroup(&autoGroup2);
+    amount += createSingleConnectedGroup(&autoGroup1);
+    return amount;
+}
+
+int createConnectedGroupsForCompletelyAll() {
+    int amount = 0;
+    amount += createSingleConnectedGroup(&autoGroupAllWindows);
+    return amount;
+}
+
+void connectAllRxs() {
+    cout << "Connecting RBX windows..." << endl;
+    autoGroup1.clear(); autoGroup2.clear(); autoGroup3.clear(); autoGroup4.clear();
+    currentHangWindows = 0;
+    EnumWindows(rxConnectivityCallback, NULL);
+    if (currentHangWindows > 0) cout << "Found " << currentHangWindows << " window(s) that isn't (aren't) responding, skipping them" << endl;
+    int amount = createConnectedGroups();
+    if (amount > 0) {
+        cout << "Successfully connected " << amount << " window";
+        if (amount > 1) cout << "s";
+        cout << endl;
+    }
+    else {
+        cout << "Didn't find any matching windows!" << endl;
+    }
+}
+
+void connectAllRbxsNoMatterWhat() {
+    cout << "Connecting Absolutely all RBX windows..." << endl;
+    autoGroupAllWindows.clear();
+    currentHangWindows = 0;
+    EnumWindows(rxConnectivityCompletelyAllCallback, NULL);
+    if (currentHangWindows > 0) cout << "Found " << currentHangWindows << " window(s) that isn't (aren't) responding, skipping them" << endl;
+    int amount = createConnectedGroupsForCompletelyAll();
+    if (amount > 0) {
+        cout << "Successfully connected " << amount << " RBX window";
+        if (amount > 1) cout << "s";
+        cout << endl;
+    }
+    else {
+        cout << "Didn't find any RBX windows!" << endl;
+    }
+}
+
+void performShowOrHideAllNotMain() {
+    hideNotMainWindows = !hideNotMainWindows;
+    for (const auto& it : referenceToGroup) {
+        if (it.second != NULL) {
+            it.second->hideOrShowOthers();
+        }
+    }
+}
+
+//vector<HWND> rxWindowsForAdjusting; // delete closed pls
+
+void windowPosTest(HWND hwnd, int type) {
+    RECT p;
+    GetWindowRect(hwnd, &p);
+    //RECT p = WINDOWPLACEMENT;
+    cout << p.left << " " << p.top << endl;
+    cout << p.right << " " << p.bottom << endl;
+    // -7, 0, 967, 638     // 953, 0, 1927, 638     // -7, 402, 967, 1047     // 953, 402, 1927, 1047
+    //if (type == 1) { SetWindowPos(hwnd, NULL, -7, 0, 974, 638, NULL); }
+    //else if (type == 2) { SetWindowPos(hwnd, NULL, 953, 0, 974, 638, NULL); } // 1390
+    //else if (type == 3) { SetWindowPos(hwnd, NULL, -7, 402, 974, 645, NULL); }
+    //else if (type == 4) { SetWindowPos(hwnd, NULL, 953, 402, 974, 645, NULL); }
+
+    if (type == 1) { SetWindowPos(hwnd, NULL, -7, 0, 974, 638, NULL); }
+    else if (type == 2) { SetWindowPos(hwnd, NULL, 953, 0, 974, 638, NULL); }
+    else if (type == 3) { SetWindowPos(hwnd, NULL, -7, 306, 974, 645, NULL); }
+    else if (type == 4) { SetWindowPos(hwnd, NULL, 953, 306, 974, 645, NULL); } // 952 304 1925 949
+
+    RECT p2;
+    GetWindowRect(hwnd, &p2);
+    //RECT p = WINDOWPLACEMENT;
+    cout << p2.left << " " << p2.top << endl;
+    cout << p2.right << " " << p2.bottom << endl;
+
+    cout << endl;
+    //SetWindowPlacement(hwnd,
+}
+
+thread* curInputThr;
+boolean stopInput = true;
+
+void pressEEverywhere()
+{
+    for (auto& it : referenceToGroup) {
+        if (stopInput) return;
+        //cout << it.first << endl;
+        pressE(it.first);
+    }
+}
+
+void startTyping() {
+    Sleep(macroDelayInitial);
+    while (!stopInput) {
+        //for (int i = 0x5; i <= 0x30; i++) { // 5A
+            //if (stopInput) return;
+            //cout << std::hex << key << endl;
+            //cout << std::dec;
+            //key = i;
+        pressEEverywhere();
+        // 8000
+        /*for (int i = 0; i < 100; i++) {
+            //Sleep(160);
+            Sleep(50);
+            if (stopInput) return;
+        }*/
+    }
+}
+
+void inputStart() {
+    curInputThr = new thread(startTyping);
+}
+
+void holdDownE() {
+    HWND w = GetForegroundWindow();
+    SetForegroundWindow(w);
+    Sleep(10);
+    SetFocus(w);
+    Sleep(10);
+    int key = mapOfKeys[defaultMacroKey];
+    if (groupToKey.count(referenceToGroup[w])) {
+        key = groupToKey[referenceToGroup[w]];
+    }
+    keyPress(key);
+}
+
+void unHoldDownE() {
+    HWND w = GetForegroundWindow();
+    SetForegroundWindow(w);
+    Sleep(10);
+    SetFocus(w);
+    Sleep(10);
+    int key = mapOfKeys[defaultMacroKey];
+    if (groupToKey.count(referenceToGroup[w])) {
+        key = groupToKey[referenceToGroup[w]];
+    }
+    keyRelease(key);
+}
+
+void EMacro() {
+    if (referenceToGroup.size() == 0) {
+        cout << "You haven't linked any windows yet!" << endl;
+    }
+    else if (stopInput) {
+        stopInput = false;
+        cout << "Starting...\n";
+        if (macroJustHoldWhenSingleWindow && referenceToGroup.size() == 1) {
+            holdDownE();
+        }
+        else {
+            inputStart();
+        }
+    }
+    else {
+        stopInput = true;
+        if (referenceToGroup.size() == 1) unHoldDownE();
+        cout << "Stopped\n";
+    }
+}
+
+void hideForgr() {
+    HWND h = GetForegroundWindow();
+    //wstring name = getWindowName(h);
+    //wcout << h << endl;
+    //cout << (h == FindWindow(L"Shell_TrayWnd", NULL)) << endl;
+    //cout << (h == FindWindow(L"ToolbarWindow32", L"Running Applications")) << endl;
+    //cout << (h == FindWindow(L"SysTabControl32", NULL)) << endl;
+    //wcout << getWindowName(GetParent(h)) << endl;
+    //cout << (curHwnd == GetDesktopWindow());
+    if (h != FindWindow("Shell_TrayWnd", NULL) && !checkHungWindow(h)) ShowWindow(h, SW_HIDE); // taskbar, other desktop components get back on their own
+    //get back from vector somehow, maybe input
+}
+
+wstring customFgName = L"";
+int restoredCustomWindowsAmount = 0;
+
+static BOOL CALLBACK fgCustonWindowCallback(HWND hwnd, LPARAM lparam) {
+    if (customFgName == L"") return TRUE;
+
+    //int length = GetWindowTextLength(hwnd); // WindowName
+    //wchar_t* buffer = new wchar_t[length + 1];
+    //GetWindowTextW(hwnd, buffer, length + 1);
+    //wstring ws(buffer);
+
+    wstring ws = getWindowName(hwnd);
+
+    if (ws == customFgName || (ws.find(customFgName) != wstring::npos)) {
+        if (!checkHungWindow(hwnd)) {
+            if (!ShowWindow(hwnd, SW_SHOW)) cout << GetLastError() << endl;
+            if (!IsWindowVisible(hwnd)) {
+                ShowWindow(hwnd, SW_RESTORE); // cout << GetLastError() << endl;
+            }
+            restoredCustomWindowsAmount++;
+        }
+        //return FALSE; // IDK HOW TO MAKE IT EASY TO SPECIFY if one window or all
+    }
+
+    //EnumChildWindows(hwnd, fgCustonWindowCallback, NULL);
+
+    return TRUE;
+}
+#include <regex>
+
+void getFromBackgroundSpecific() {
+    HWND itself = GetConsoleWindow();
+    if (!checkHungWindow(itself)) { // just in case lol
+        ShowWindow(itself, SW_SHOW);
+        //if (IsIconic(itself)) {
+        //    ShowWindow(itself, SW_MINIMIZE);
+        //}
+        ShowWindow(itself, SW_RESTORE);
+    }
+    SetForegroundWindow(itself);
+
+    SetForegroundWindow(GetConsoleWindow());
+    restoredCustomWindowsAmount = 0;
+    wstring targetName = L"";
+    wstring checkEmpty = L"";
+    wcout << "Enter the text (Eng only):\n";
+    getline(wcin, targetName);
+    //wcout << "Entered: '" << targetName << "'" << endl;
+
+    checkEmpty = targetName;
+
+    checkEmpty.erase(std::remove(checkEmpty.begin(), checkEmpty.end(), ' '), checkEmpty.end());
+
+    //wcout << "\"" << checkEmpty << "\"\n";
+    if (checkEmpty != L"") {
+        customFgName = targetName;
+    }
+    //else if (customFgName != L"") cout << "Using the previous window name\n";
+    //else {
+    //    cout << "The input data is incorrect" << endl;
+    //}
+    EnumWindows(fgCustonWindowCallback, NULL);
+    if (restoredCustomWindowsAmount == 1) cout << "Success\n";
+    else cout << "Couldn't find such window!\n";
+}
+
+void setGroupKey(HWND h) {
+    if (referenceToGroup.count(h)) {
+        SetForegroundWindow(GetConsoleWindow());
+        cout << "Enter the key (Eng only, lowercase, no combinations):\n";
+        string keyName = "";
+        getline(cin, keyName);
+        if (mapOfKeys.count(keyName)) {
+            groupToKey[referenceToGroup[h]] = mapOfKeys[keyName];
+            cout << "Set the key for that group" << endl;
+            SetForegroundWindow(h);
+        }
+        else {
+            cout << "Such key doesn't esist or isn't supported yet!" << endl;
+        }
+    }
+    else {
+        cout << "No window group is focused!" << endl;
+    }
+}
+
+void loadConfig(string programPath) {
+    string folderPath = "WindowSwitcherSettings";
+    string fileName = "settings.yml";
+    YAML::Node config;
+    bool wrongConfig = false;
+
+    try {
+        config = loadYaml(programPath, folderPath, fileName);
+    }
+    catch (YAML::ParserException e) {
+        addConfigLoadingMessage("THE CONFIG HAS INVALID STRUCTURE AND CANNOT BE LOADED!\nUsing ALL default values");
+        config = YAML::Node();
+        wrongConfig = true;
+    }
+
+
+    defaultMacroKey = getConfigString(config, "settings/macro/defaultKey", "e");
+    if (mapOfKeys.find(defaultMacroKey) == mapOfKeys.end()) {
+        defaultMacroKey = "e";
+        addConfigLoadingMessage("Invalid settings/macro/defaultKey value! It needs to be lowercase english letter or the name of the key in lowercase! Defaulting to \"e\"");
+    }
+
+    macroDelayInitial = getConfigInt(config, "settings/macro/delaysInMilliseconds/initialDelayBeforeFirstIteration", 100);
+    macroDelayAfterSwitching = getConfigInt(config, "settings/macro/delaysInMilliseconds/afterSwitchingToWindow", 10);
+    macroDelayAfterFocus = getConfigInt(config, "settings/macro/delaysInMilliseconds/afterSettingFocus", 200);
+    macroDelayAfterKeyPress = getConfigInt(config, "settings/macro/delaysInMilliseconds/afterKeyPress", 2400);
+    macroDelayAfterKeyRelease = getConfigInt(config, "settings/macro/delaysInMilliseconds/afterKeyRelease", 10);
+    macroJustHoldWhenSingleWindow = getConfigBool(config, "settings/macro/justHoldWhenSingleWindow", true);
+
+    vector<string> localDefaultFastForegroundWindows;
+    localDefaultFastForegroundWindows.push_back("Roblox");
+    localDefaultFastForegroundWindows.push_back("VMware Workstation");
+    defaultFastForegroundWindows = getConfigVectorString(config, "settings/fastReturnToForegroundWindows", localDefaultFastForegroundWindows);
+
+    //cout << "'" << config << "'" << endl;
+
+    if(!wrongConfig) saveYaml(config, getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName);
+}
+
+int main(int argc, char* argv[]) {
+    setlocale(0, "");
+    loadConfig(argv[0]);
+    registerHotkeys();
+    printConfigLoadingMessages();
+    //UINT VKCode = LOBYTE(VkKeyScan('e'));
+    //UINT ScanCode = MapVirtualKey(VKCode, 0);
+    //cout << ScanCode << endl; // VkKeyScan('e') // wscanf_s(L"a")
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0) != 0) {
+        if (msg.message == WM_HOTKEY) {
+            checkClosedWindows();
+            HWND curHwnd = GetForegroundWindow();
+            //cout << "curHwnd = " << curHwnd << endl;
+            //cout << msg.wParam << endl;
+            if (msg.wParam == 1) {
+                if (curHwnd != GetConsoleWindow()) {
+                    if (lastGroup == NULL) {
+                        lastGroup = new WindowGroup();
+                    }
+                    (*lastGroup).addWindow(curHwnd);
+                    referenceToGroup[curHwnd] = lastGroup;
+                }
+            }
+            else if (msg.wParam == 2) {
+                lastGroup = NULL;
+            }
+            else if (msg.wParam == 10) {
+                SwapVisibilityForAll();
+            }
+            else if (msg.wParam == 12) {
+                showAllRx();
+            }
+            else if (msg.wParam == 14) {
+                connectAllRxs();
+            }
+            else if (msg.wParam == 15) {
+                referenceToGroup.clear();
+            }
+            else if (msg.wParam == 21) { // test
+
+                //keyPress(0x12);
+                //Sleep(10000);
+                //keyRelease(0x12);
+                // 
+                //windowPosTest(curHwnd, 3);
+                //distributeRxHwndsToGroups(curHwnd); // also uncomment inside if needed to use
+                //windowPosTest(curHwnd, 1);
+            }
+            else if (msg.wParam == 17) {
+                EMacro();
+            }
+            else if (msg.wParam == 24) {
+                hideForgr();
+            }
+            else if (msg.wParam == 25) {
+                getFromBackgroundSpecific();
+            }
+            else if (msg.wParam == 28) {
+                restoreAllConnected();
+            }
+            else if (msg.wParam == 29) {
+                setGroupKey(curHwnd);
+            }
+            else if (msg.wParam == 30) {
+                connectAllRbxsNoMatterWhat();
+            }
+            else if (msg.wParam == 31) {
+                loadConfig(argv[0]);
+                printConfigLoadingMessages();
+            }
+            // EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE
+            if (referenceToGroup.count(curHwnd)) {
+                if (msg.wParam == 3) {
+                    shiftGroup(curHwnd, -1);
+                }
+                else if (msg.wParam == 4) {
+                    shiftGroup(curHwnd, 1);
+                }
+                else if (msg.wParam == 5) {
+                    shiftAllGroups(-1);
+                }
+                else if (msg.wParam == 6) {
+                    shiftAllGroups(1);
+                }
+                else if (msg.wParam == 7) {
+                    deleteWindow(curHwnd);
+                }
+                else if (msg.wParam == 8) {
+                    deleteWindowGroup(curHwnd);
+                }
+                else if (msg.wParam == 9) {
+
+                }
+                else if (msg.wParam == 11) {
+                    lastGroup = getGroup(curHwnd);
+                }
+                else if (msg.wParam == 13) {
+                    performShowOrHideAllNotMain();
+                }
+                else if (msg.wParam == 26) {
+                    shiftAllOtherGroups(-1);
+                }
+                else if (msg.wParam == 27) {
+                    shiftAllOtherGroups(1);
+                }
+            }
+            if (msg.wParam == 20) { // debug
+                //cout << ((&referenceToGroup==NULL) || referenceToGroup.size()) << endl;
+                if ((&referenceToGroup != NULL) && referenceToGroup.size() > 0) {
+                    //cout << "The group and size (make sure not console): ";
+                    //if (referenceToGroup.count(curHwnd)) cout << (referenceToGroup.find(curHwnd)->second) << " " << (*(referenceToGroup.find(curHwnd)->second)).size() << endl;
+
+                    cout << "Current HWND->WindowGroup* map:" << endl;
+                    for (const auto& it : referenceToGroup) {
+                        cout << it.first << " " << it.second;
+                        if (it.first == curHwnd) cout << " (Current)";
+                        cout << endl;
+                    }
+                }
+            }
+            hungWindowsAnnouncement();
+        }
+    }
+    return 0;
+}
