@@ -6,6 +6,7 @@
 #include <yaml-cpp/yaml.h>
 #include "ConfigOperations.h"
 #include "GeneralUtils.h"
+#include "KeySequence.h"
 
 #include <windows.h>
 #include <stdio.h>
@@ -16,6 +17,7 @@
 #include <string>
 #include <conio.h> // ig for _getch
 #include <dwmapi.h>
+//#include <stdexcept>
 
 #pragma comment(lib, "Dwmapi.lib")
 
@@ -24,24 +26,36 @@ class WindowGroup;
 void deleteWindowGroup(WindowGroup* wg);
 
 map<HWND, WindowGroup*> referenceToGroup;
-map<WindowGroup*, int> groupToKey;
+map<WindowGroup*, KeySequence*> groupToKey;
 WindowGroup* lastGroup;
 bool hideNotMainWindows = false;
 
 int currentHangWindows = 0;
 
+string currentConfigVersion = "2.1";
 wstring rx_name = L"Roblox";
 //wstring vmware_name_part = L"VMware Workstation"; // I needed that
 //wstring mc_name_part = L"Minecraft"; // And this too lmao
 
-string defaultMacroKey;
+string defaultMacroKey = "e";
 int macroDelayInitial;
+int macroDelayBeforeSwitching;
 int macroDelayAfterSwitching;
 int macroDelayAfterFocus;
 int macroDelayAfterKeyPress;
 int macroDelayAfterKeyRelease;
-bool macroJustHoldWhenSingleWindow;
+bool specialSingleWindowModeEnabled;
+string specialSingleWindowModeKeyCode;
+
 vector<string> defaultFastForegroundWindows;
+
+thread* curInputThr;
+boolean stopInput = true;
+KeySequence* mainSequence;
+map<string, KeySequence*> knownOtherSequences = map<string, KeySequence*>();
+
+int sleepRandomnessPersent = 10;
+int sleepRandomnessMaxDiff = 40;
 
 // Should have a better system later, just afraid to add more vectors due to danger of leaks and the fact that I need to make a good config
 
@@ -260,6 +274,16 @@ void registerHotkeys() {
 }
 
 std::map<std::string, int> mapOfKeys = {
+    {"0",0x0B},
+    {"1",0x2},
+    {"2",0x3},
+    {"3",0x4},
+    {"4",0x5},
+    {"5",0x6},
+    {"6",0x7},
+    {"7",0x8},
+    {"8",0x9},
+    {"9",0xA},
     {"q",0x10},
     {"w",0x11},
     {"e",0x12},
@@ -301,11 +325,18 @@ std::map<std::string, int> mapOfKeys = {
     {".",0x34},
     {"/",0x35},
     {"shift_right",0x36},
-    //
     {"alt_left",0x38},
     {"alt",0x38}, // dublicate. For now no combinations btw
     {"space",0x39},
 };
+
+std::map<std::string, int> getMapOfKeys() {
+    return mapOfKeys;
+}
+
+void customSleep(int duration) {
+    Sleep(randomizeValue(duration, sleepRandomnessPersent, sleepRandomnessMaxDiff));
+}
 
 WindowGroup* getGroup(HWND hwnd) {
     if (referenceToGroup.count(hwnd)) {
@@ -557,25 +588,144 @@ void keyRelease(WORD keyCode)
     SendInput(1, &input, sizeof(INPUT));
 }
 
-void pressE(HWND hwnd) {
-    int key = mapOfKeys[defaultMacroKey]; // 0x12
+void keyPress(string key) {
+    keyPress(mapOfKeys[key]);
+}
+
+void keyRelease(string key) {
+    keyRelease(mapOfKeys[key]);
+}
+
+void pressAKey(HWND w, Key k) {
+    if (!k.enabled || k.keyCode == "EXAMPLE") return;
+    if (stopInput) return;
+    customSleep(k.beforeKeyPress);
+    if (stopInput) return;
+    keyPress(mapOfKeys[k.keyCode]);
+    customSleep(k.holdFor);
+    keyRelease(mapOfKeys[k.keyCode]);
+    if (stopInput) return;
+    customSleep(k.afterKeyPress);
+}
+
+void performASequence(HWND w) {
+    if (groupToKey.count(referenceToGroup[w])) {
+        vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
+        if (keys.size() > 0) {
+            for (auto& el : keys) {
+                pressAKey(w, el);
+            }
+        }
+        else {
+            cout << "You can't have no actions in a sequence! Waiting a bit instead" << endl; // kostil
+            customSleep(100);
+        }
+    }
+    else {
+        for (auto& el : mainSequence->getKeys()) {
+            pressAKey(w, el);
+        }
+    }
+}
+
+void performInput(HWND hwnd) { // find this
+    /*int key = mapOfKeys[defaultMacroKey]; // 0x12
+    //if(specialSingleWindowModeKeyCode)
     if (groupToKey.count(referenceToGroup[hwnd])) {
         key = groupToKey[referenceToGroup[hwnd]];
-    }
+    }*/
     //cout << "test\n";
     //cout << "key: " << key << endl;
 
     SetForegroundWindow(hwnd);
-    Sleep(macroDelayAfterSwitching);
+    customSleep(macroDelayAfterSwitching);
     SetFocus(hwnd);
 
-    Sleep(macroDelayAfterFocus);
+    customSleep(macroDelayAfterFocus);
 
+    performASequence(hwnd);
+}
+
+void performInputsEverywhere()
+{
+    for (auto& it : referenceToGroup) {
+        if (stopInput) return;
+        //cout << it.first << endl;
+        performInput(it.first);
+        customSleep(macroDelayBeforeSwitching);
+    }
+}
+
+void startUsualMacroLoop() {
+    customSleep(macroDelayInitial);
+    while (!stopInput) {
+        //for (int i = 0x5; i <= 0x30; i++) { // 5A
+            //if (stopInput) return;
+            //cout << std::hex << key << endl;
+            //cout << std::dec;
+            //key = i;
+        performInputsEverywhere();
+        // 8000
+        /*for (int i = 0; i < 100; i++) {
+            //customSleep(160);
+            customSleep(50);
+            if (stopInput) return;
+        }*/
+    }
+}
+
+void startUsualSequnceMode() {
+    curInputThr = new thread(startUsualMacroLoop);
+}
+
+void performSingleWindowedHold() {
+    HWND w = GetForegroundWindow();
+    SetForegroundWindow(w);
+    customSleep(macroDelayAfterSwitching);
+    SetFocus(w);
+    customSleep(macroDelayAfterFocus);
+    string key = specialSingleWindowModeKeyCode;
+    if (groupToKey.count(referenceToGroup[w])) {
+        vector<Key> allKeys = groupToKey[referenceToGroup[w]]->getKeys();
+        if (allKeys.size() > 0) key = allKeys[0].keyCode;
+    }
     keyPress(key);
-    Sleep(macroDelayAfterKeyPress);
-    keyRelease(key);
+    //performASequence(w);
+}
 
-    Sleep(macroDelayAfterKeyRelease);
+void unHoldDownE() {
+    HWND w = GetForegroundWindow();
+    SetForegroundWindow(w);
+    customSleep(macroDelayAfterSwitching);
+    SetFocus(w);
+    customSleep(macroDelayAfterFocus);
+    string key = specialSingleWindowModeKeyCode;
+    if (groupToKey.count(referenceToGroup[w])) {
+        vector<Key> allKeys = groupToKey[referenceToGroup[w]]->getKeys();
+        if (allKeys.size() > 0) key = allKeys[0].keyCode;
+    }
+    keyRelease(key);
+}
+
+void EMacro() {
+    if (referenceToGroup.size() == 0) {
+        cout << "You haven't linked any windows yet!" << endl;
+    }
+    else if (stopInput) {
+        stopInput = false;
+        cout << "Starting...\n";
+        if (specialSingleWindowModeEnabled && referenceToGroup.size() == 1) {
+            performSingleWindowedHold();
+        }
+        else {
+            startUsualSequnceMode();
+        }
+    }
+    else {
+        stopInput = true;
+        if (referenceToGroup.size() == 1) unHoldDownE();
+        cout << "Stopped\n";
+    }
 }
 
 vector<HWND> autoGroup1;
@@ -609,7 +759,7 @@ void distributeRxHwndsToGroups(HWND hwnd) {
             openCmdLater = true;
         }
     }
-    Sleep(1);
+    customSleep(1);
     DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &r, sizeof(RECT));
     // GetWindowRect(hwnd, &r)
     //cout << r.left << " " << r.top << " " << r.right << " " << r.bottom << " " << endl;
@@ -631,7 +781,7 @@ void distributeRxHwndsToGroups(HWND hwnd) {
 
     if (openCmdLater) {
         /*cout << "restoring\n";
-        Sleep(1);
+        customSleep(1);
         if(IsIconic(GetConsoleWindow())) ShowWindow(GetConsoleWindow(), SW_RESTORE);*/
     }
 }
@@ -780,87 +930,6 @@ void windowPosTest(HWND hwnd, int type) {
     //SetWindowPlacement(hwnd,
 }
 
-thread* curInputThr;
-boolean stopInput = true;
-
-void pressEEverywhere()
-{
-    for (auto& it : referenceToGroup) {
-        if (stopInput) return;
-        //cout << it.first << endl;
-        pressE(it.first);
-    }
-}
-
-void startTyping() {
-    Sleep(macroDelayInitial);
-    while (!stopInput) {
-        //for (int i = 0x5; i <= 0x30; i++) { // 5A
-            //if (stopInput) return;
-            //cout << std::hex << key << endl;
-            //cout << std::dec;
-            //key = i;
-        pressEEverywhere();
-        // 8000
-        /*for (int i = 0; i < 100; i++) {
-            //Sleep(160);
-            Sleep(50);
-            if (stopInput) return;
-        }*/
-    }
-}
-
-void inputStart() {
-    curInputThr = new thread(startTyping);
-}
-
-void holdDownE() {
-    HWND w = GetForegroundWindow();
-    SetForegroundWindow(w);
-    Sleep(10);
-    SetFocus(w);
-    Sleep(10);
-    int key = mapOfKeys[defaultMacroKey];
-    if (groupToKey.count(referenceToGroup[w])) {
-        key = groupToKey[referenceToGroup[w]];
-    }
-    keyPress(key);
-}
-
-void unHoldDownE() {
-    HWND w = GetForegroundWindow();
-    SetForegroundWindow(w);
-    Sleep(10);
-    SetFocus(w);
-    Sleep(10);
-    int key = mapOfKeys[defaultMacroKey];
-    if (groupToKey.count(referenceToGroup[w])) {
-        key = groupToKey[referenceToGroup[w]];
-    }
-    keyRelease(key);
-}
-
-void EMacro() {
-    if (referenceToGroup.size() == 0) {
-        cout << "You haven't linked any windows yet!" << endl;
-    }
-    else if (stopInput) {
-        stopInput = false;
-        cout << "Starting...\n";
-        if (macroJustHoldWhenSingleWindow && referenceToGroup.size() == 1) {
-            holdDownE();
-        }
-        else {
-            inputStart();
-        }
-    }
-    else {
-        stopInput = true;
-        if (referenceToGroup.size() == 1) unHoldDownE();
-        cout << "Stopped\n";
-    }
-}
-
 void hideForgr() {
     HWND h = GetForegroundWindow();
     //wstring name = getWindowName(h);
@@ -943,11 +1012,14 @@ void getFromBackgroundSpecific() {
 void setGroupKey(HWND h) {
     if (referenceToGroup.count(h)) {
         SetForegroundWindow(GetConsoleWindow());
-        cout << "Enter the key (Eng only, lowercase, no combinations):\n";
+        cout << "Enter the key (Eng only, lowercase, no combinations) or the extra sequence name with \"!\" in the beggining:\n";
         string keyName = "";
         getline(cin, keyName);
+        if (keyName.rfind("!", 0) == 0) {
+            groupToKey[referenceToGroup[h]] = knownOtherSequences[keyName.substr(1)];
+        }
         if (mapOfKeys.count(keyName)) {
-            groupToKey[referenceToGroup[h]] = mapOfKeys[keyName];
+            groupToKey[referenceToGroup[h]] = &KeySequence(keyName); // then use as mapOfKeys[keyName] // important comment
             cout << "Set the key for that group" << endl;
             SetForegroundWindow(h);
         }
@@ -960,47 +1032,182 @@ void setGroupKey(HWND h) {
     }
 }
 
-void loadConfig(string programPath) {
-    string folderPath = "WindowSwitcherSettings";
-    string fileName = "settings.yml";
-    YAML::Node config;
-    bool wrongConfig = false;
+YAML::Node getDefaultSequenceList() {
+    YAML::Node firstKey = YAML::Node();
+    setConfigValue(firstKey, "keyCode", defaultMacroKey);
+    setConfigValue(firstKey, "enabled", true);
+    setConfigValue(firstKey, "beforeKeyPress", 0);
+    setConfigValue(firstKey, "holdFor", 2400);
+    setConfigValue(firstKey, "afterKeyPress", 10);
 
+    YAML::Node keyExample = YAML::Clone(firstKey);
+    setConfigValue(keyExample, "keyCode", "EXAMPLE");
+    setConfigValue(keyExample, "enabled", false);
+
+    YAML::Node list = YAML::Node(YAML::NodeType::Sequence);
+    list.push_back(firstKey);
+    list.push_back(keyExample);
+
+    return list;
+}
+
+void resetMainSequence(const YAML::Node &config) {
+    if (mainSequence != nullptr) {
+        mainSequence->~KeySequence();
+        delete mainSequence;
+        mainSequence = nullptr;
+    }
+}
+
+void readNewMainSequence(const YAML::Node& config) {
+    resetMainSequence(config);
+    mainSequence = new KeySequence(getConfigValue(config, "settings/macro/mainKeySequence"));
+}
+
+void readDefaultMainSequence(const YAML::Node& config) {
+    resetMainSequence(config);
+    mainSequence = new KeySequence(getDefaultSequenceList());
+}
+
+void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig) {
+    addConfigLoadingMessage("INFO | The config was updated from version 2.0 to 2.1");
+
+    setConfigValue(config, "settings/macro/general/initialDelayBeforeFirstIteration", getConfigInt(config, "settings/macro/delaysInMilliseconds/initialDelayBeforeFirstIteration", 100));
+    setConfigValue(config, "settings/macro/general/delayBeforeSwitchingWindow", 0);
+    setConfigValue(config, "settings/macro/general/delayAfterSwitchingWindow", getConfigInt(config, "settings/macro/delaysInMilliseconds/afterSettingFocus", 200));
+    setConfigValue(config, "settings/macro/general/dontChangeWithoutAReason/afterSettingForegroundButBeforeSettingFocus", getConfigInt(config, "settings/macro/delaysInMilliseconds/afterSwitchingToWindow", 10));
+    setConfigValue(config, "settings/macro/general/specialSingleWindowMode/enabled", getConfigBool(config, "settings/macro/justHoldWhenSingleWindow", false));
+    setConfigValue(config, "settings/macro/general/specialSingleWindowMode/keyCode", getConfigString(config, "settings/macro/defaultKey", defaultMacroKey));
+
+    YAML::Node firstKey = YAML::Node();
+    setConfigValue(firstKey, "keyCode", getConfigString(config, "settings/macro/defaultKey", defaultMacroKey));
+    setConfigValue(firstKey, "enabled", true);
+    setConfigValue(firstKey, "beforeKeyPress", 0);
+    setConfigValue(firstKey, "holdFor", getConfigInt(config, "settings/macro/delaysInMilliseconds/afterKeyPress", 2400));
+    setConfigValue(firstKey, "afterKeyPress", getConfigInt(config, "settings/macro/delaysInMilliseconds/afterKeyRelease", 10));
+
+    YAML::Node keyExample = YAML::Clone(firstKey);
+    setConfigValue(keyExample, "keyCode", "EXAMPLE");
+    setConfigValue(keyExample, "enabled", false);
+
+    YAML::Node list = YAML::Node(YAML::NodeType::Sequence);
+    list.push_back(firstKey);
+    list.push_back(keyExample);
+
+    setConfigValue(config, "settings/macro/mainKeySequence", getDefaultSequenceList());
+    if(!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", vector<YAML::Node>());
+    removeConfigValue(config, "settings/macro/delaysInMilliseconds");
+    removeConfigValue(config, "settings/macro/justHoldWhenSingleWindow");
+    removeConfigValue(config, "settings/macro/defaultKey", true);
+}
+
+bool loadConfig(string programPath) {
     try {
-        config = loadYaml(programPath, folderPath, fileName);
+        string folderPath = "WindowSwitcherSettings";
+        string fileName = "settings.yml";
+        YAML::Node config;
+        bool wrongConfig = false;
+        bool wasEmpty = false;
+
+        try {
+            config = loadYaml(programPath, folderPath, fileName, wrongConfig);
+            wasEmpty = config.IsNull();
+        }
+        /*catch (YAML::ParserException e) {
+            addConfigLoadingMessage("THE CONFIG HAS INVALID STRUCTURE AND CANNOT BE LOADED!\nUsing ALL default values");
+            config = YAML::Node();
+            wrongConfig = true;
+        }
+        catch (YAML::BadSubscript e) {
+            addConfigLoadingMessage("THE CONFIG HAS INVALID STRUCTURE AND CANNOT BE LOADED!\nUsing ALL default values");
+            config = YAML::Node();
+            wrongConfig = true;
+        }*/
+        catch (const YAML::Exception& e) {
+            addConfigLoadingMessage("WARNING | UNKNOWN ERROR WHILE LOADING THE CONFIG!\nERROR TEXT | " + string(e.what()));
+            config = YAML::Node();
+            wrongConfig = true;
+        }
+
+        if (wrongConfig) {
+            addConfigLoadingMessage("WARNING | For safery reasons, only default values will be used and NO CHANGES WILL BE APPLIED to the actual config");
+        }
+
+        if (!wasEmpty) {
+            string oldConfigVersion;
+            YAML::Node versionData;
+            try {
+                versionData = getConfigValue(config, "internal/configVersion");
+                oldConfigVersion = versionData.as<string>();
+            }
+            catch (const YAML::Exception& e) {
+                oldConfigVersion = "2.0";
+            }
+            if (oldConfigVersion == "2.0") {
+                updateConfig2_0_TO_2_1(config, wrongConfig);
+                oldConfigVersion = "2.1";
+            }
+        }
+
+        macroDelayInitial = getConfigInt(config, "settings/macro/general/initialDelayBeforeFirstIteration", 100);
+        macroDelayBeforeSwitching = getConfigInt(config, "settings/macro/general/delayBeforeSwitchingWindow", 0);
+        macroDelayAfterFocus = getConfigInt(config, "settings/macro/general/delayAfterSwitchingWindow", 200);
+        macroDelayAfterSwitching = getConfigInt(config, "settings/macro/general/dontChangeWithoutAReason/afterSettingForegroundButBeforeSettingFocus", 10);
+        specialSingleWindowModeEnabled = getConfigBool(config, "settings/macro/general/specialSingleWindowMode/enabled", false);
+        specialSingleWindowModeKeyCode = getConfigString(config, "settings/macro/general/specialSingleWindowMode/keyCode", defaultMacroKey);
+
+        sleepRandomnessPersent = getConfigInt(config, "settings/macro/general/delayRandomness/persentage", 10);
+        sleepRandomnessMaxDiff = getConfigInt(config, "settings/macro/general/delayRandomness/maxDifference", 40);
+
+        if (!wrongConfig) {
+            readNewMainSequence(config);
+            if (mainSequence->countEnabledKeys() == 0) {
+                setConfigValue(config, "settings/macro/mainKeySequence", getDefaultSequenceList());
+                readNewMainSequence(config);
+            }
+        }
+        else {
+            readDefaultMainSequence(config);
+        }
+
+        if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", vector<YAML::Node>());
+        
+        YAML::Node extraSequences = getConfigValue(config, "settings/macro/extraKeySequences");
+        if (extraSequences.IsMap()) {
+            //for (auto& otherSeq : knownOtherSequences) {
+            //    delete &otherSeq;
+            //}
+            knownOtherSequences.clear();
+            for (YAML::const_iterator at = extraSequences.begin(); at != extraSequences.end(); at++) {
+                knownOtherSequences[at->first.as<string>()] = new KeySequence(at->second);
+            }
+        }
+        
+        vector<string> localDefaultFastForegroundWindows;
+        localDefaultFastForegroundWindows.push_back("Roblox");
+        localDefaultFastForegroundWindows.push_back("VMware Workstation");
+        defaultFastForegroundWindows = getConfigVectorString(config, "settings/fastReturnToForegroundWindows", localDefaultFastForegroundWindows);
+
+        setConfigValue(config, "internal/configVersion", currentConfigVersion);
+        if (!wrongConfig) saveYaml(config, getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName);
+        //if (!wrongConfig) saveYaml(config, getProgramFolderPath(programPath) + "/" + folderPath + "/" + "test_" + fileName); // test
+
+        return true;
     }
-    catch (YAML::ParserException e) {
-        addConfigLoadingMessage("THE CONFIG HAS INVALID STRUCTURE AND CANNOT BE LOADED!\nUsing ALL default values");
-        config = YAML::Node();
-        wrongConfig = true;
+    catch (const YAML::Exception& e) {
+        addConfigLoadingMessage("WARNING | A completely unexpected YAML::Exception error happened while loading the config:\nERROR | " + string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
     }
-
-
-    defaultMacroKey = getConfigString(config, "settings/macro/defaultKey", "e");
-    if (mapOfKeys.find(defaultMacroKey) == mapOfKeys.end()) {
-        defaultMacroKey = "e";
-        addConfigLoadingMessage("Invalid settings/macro/defaultKey value! It needs to be lowercase english letter or the name of the key in lowercase! Defaulting to \"e\"");
+    catch (const std::exception& e) {
+        addConfigLoadingMessage("WARNING | A completely unexpected std::exception error happened while loading the config:\nERROR | " + string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
     }
-
-    macroDelayInitial = getConfigInt(config, "settings/macro/delaysInMilliseconds/initialDelayBeforeFirstIteration", 100);
-    macroDelayAfterSwitching = getConfigInt(config, "settings/macro/delaysInMilliseconds/afterSwitchingToWindow", 10);
-    macroDelayAfterFocus = getConfigInt(config, "settings/macro/delaysInMilliseconds/afterSettingFocus", 200);
-    macroDelayAfterKeyPress = getConfigInt(config, "settings/macro/delaysInMilliseconds/afterKeyPress", 2400);
-    macroDelayAfterKeyRelease = getConfigInt(config, "settings/macro/delaysInMilliseconds/afterKeyRelease", 10);
-    macroJustHoldWhenSingleWindow = getConfigBool(config, "settings/macro/justHoldWhenSingleWindow", true);
-
-    vector<string> localDefaultFastForegroundWindows;
-    localDefaultFastForegroundWindows.push_back("Roblox");
-    localDefaultFastForegroundWindows.push_back("VMware Workstation");
-    defaultFastForegroundWindows = getConfigVectorString(config, "settings/fastReturnToForegroundWindows", localDefaultFastForegroundWindows);
-
-    //cout << "'" << config << "'" << endl;
-
-    if(!wrongConfig) saveYaml(config, getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName);
+    catch (const YAML::BadConversion& e) {
+        addConfigLoadingMessage("WARNING | A completely unexpected YAML::BadConversion error happened while loading the config:\nERROR | " + string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
+    }
 }
 
 int main(int argc, char* argv[]) {
     setlocale(0, "");
+    initializeRandom();
     loadConfig(argv[0]);
     registerHotkeys();
     printConfigLoadingMessages();
@@ -1041,7 +1248,7 @@ int main(int argc, char* argv[]) {
             else if (msg.wParam == 21) { // test
 
                 //keyPress(0x12);
-                //Sleep(10000);
+                //customSleep(10000);
                 //keyRelease(0x12);
                 // 
                 //windowPosTest(curHwnd, 3);

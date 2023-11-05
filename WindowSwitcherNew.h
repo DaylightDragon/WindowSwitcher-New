@@ -1,8 +1,7 @@
-﻿// WindowSwitcherNew.h : включаемый файл для стандартных системных включаемых файлов
-// или включаемые файлы для конкретного проекта.
-
-#pragma once
+﻿#pragma once
 
 #include <iostream>
+#include <map>
+#include <string>
 
-// TODO: установите здесь ссылки на дополнительные заголовки, требующиеся для программы.
+std::map<std::string, int> getMapOfKeys();
