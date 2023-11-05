@@ -1018,7 +1018,7 @@ void setGroupKey(HWND h) {
         if (keyName.rfind("!", 0) == 0) {
             groupToKey[referenceToGroup[h]] = knownOtherSequences[keyName.substr(1)];
         }
-        if (mapOfKeys.count(keyName)) {
+        else if (mapOfKeys.count(keyName)) {
             groupToKey[referenceToGroup[h]] = &KeySequence(keyName); // then use as mapOfKeys[keyName] // important comment
             cout << "Set the key for that group" << endl;
             SetForegroundWindow(h);
