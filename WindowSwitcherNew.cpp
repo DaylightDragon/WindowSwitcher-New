@@ -40,7 +40,7 @@ wstring rx_name = L"Roblox";
 string defaultMacroKey = "e";
 int macroDelayInitial;
 int macroDelayBeforeSwitching;
-int macroDelayAfterSwitching;
+int macroDelayBetweenSwitchingAndFocus;
 int macroDelayAfterFocus;
 int macroDelayAfterKeyPress;
 int macroDelayAfterKeyRelease;
@@ -214,7 +214,7 @@ void registerHotkeys() {
     else failed++;
     if (RegisterHotKey(NULL, 27, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4C)) { wprintf(L"Hotkey 'Ctrl + Shift + L': Shift ALL OTHER groups to the right\n"); }
     else failed++;
-    if (RegisterHotKey(NULL, 7, MOD_ALT | MOD_NOREPEAT, 0xDD)) { wprintf(L"Hotkey 'Alt + ]': Remove current window from it's group (Critical Bug)\n"); }
+    if (RegisterHotKey(NULL, 7, MOD_ALT | MOD_NOREPEAT, 0xDD)) { wprintf(L"Hotkey 'Alt + ]': Remove current window from it's group (Has a critical bug)\n"); }
     else failed++;
     if (RegisterHotKey(NULL, 8, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0xDD)) { wprintf(L"Hotkey 'Ctrl + Alt + ]': Delete the entire group current window is in\n"); }
     else failed++;
@@ -233,29 +233,29 @@ void registerHotkeys() {
     else failed++;
     if (RegisterHotKey(NULL, 23, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x44)) { wprintf(L"Hotkey 'Ctrl + Alt + D': Swap to main window in all groups (WIP)\n"); }
     else failed++;
-    if (RegisterHotKey(NULL, 12, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + Alt + U': Get all RBX and VMWW windows back from background\n"); }
+    if (RegisterHotKey(NULL, 12, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + Alt + U': Get all Roblox and VMWW windows back from background\n"); }
     else failed++;
     if (RegisterHotKey(NULL, 24, MOD_CONTROL | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + U': Put current foregrounded window to background\n"); }
     else failed++;
     if (RegisterHotKey(NULL, 25, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + Shift + U': Get specific windows from background by their name\n"); }
     else failed++;
-    if (RegisterHotKey(NULL, 16, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Ctrl + Shift + V': Start/Stop adjusting new RBX windows to screen quarters (NOT SOON WIP)\n"); }
+    if (RegisterHotKey(NULL, 16, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Ctrl + Shift + V': Start/Stop adjusting new Roblox windows to screen quarters (NOT SOON WIP)\n"); }
     else failed++;
-    if (RegisterHotKey(NULL, 14, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Ctrl + Alt + V': Connect all RBX windows to quarter groups\n"); }
+    if (RegisterHotKey(NULL, 14, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Ctrl + Alt + V': Connect all Roblox windows to quarter groups\n"); }
     else failed++;
-    if (RegisterHotKey(NULL, 30, MOD_ALT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Alt + V': Connect absolutely all RBX windows\n"); }
+    if (RegisterHotKey(NULL, 30, MOD_ALT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Alt + V': Connect absolutely all Roblox windows\n"); }
     else failed++;
     if (RegisterHotKey(NULL, 28, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x41)) { wprintf(L"Hotkey 'Ctrl + Shift + A': Show all connected windows to foreground\n"); }
     else failed++;
-    if (RegisterHotKey(NULL, 17, MOD_ALT | MOD_NOREPEAT, 0x47)) { wprintf(L"Hotkey 'Alt + G': Start/stop the Auto-Key macro for RBX windows\n"); }
+    if (RegisterHotKey(NULL, 17, MOD_ALT | MOD_NOREPEAT, 0x47)) { wprintf(L"Hotkey 'Alt + G': Start/stop the automatical sequence macro for Roblox windows\n"); }
     else failed++;
-    if (RegisterHotKey(NULL, 29, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x47)) { wprintf(L"Hotkey 'Ctrl + Alt + G': Set the Auto-Key for this group\n"); }
+    if (RegisterHotKey(NULL, 29, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x47)) { wprintf(L"Hotkey 'Ctrl + Alt + G': Set the macro key (or sequence) for this group\n"); }
     else failed++;
     if (RegisterHotKey(NULL, 31, MOD_ALT | MOD_NOREPEAT, 0x48)) { wprintf(L"Hotkey 'Alt + H': Reload all configs\n"); }
     else failed++;
-    if (RegisterHotKey(NULL, 20, MOD_ALT | MOD_NOREPEAT, 0x50)) { wprintf(L"Hotkey 'Alt + P': Show the debug list of the linked windows\n"); }
+    if (RegisterHotKey(NULL, 20, MOD_ALT | MOD_NOREPEAT, 0x50)) { } // wprintf(L"Hotkey 'Alt + P': Show the debug list of the linked windows\n");
     else failed++;
-    if (RegisterHotKey(NULL, 21, MOD_ALT | MOD_NOREPEAT, 0xDC)) { wprintf(L"Hotkey 'Alt + \\': Test\n"); }
+    if (RegisterHotKey(NULL, 21, MOD_ALT | MOD_NOREPEAT, 0xDC)) { } // wprintf(L"Hotkey 'Alt + \\': Test\n");
     else failed++;
 
     if (failed > 0) {
@@ -613,6 +613,7 @@ void performASequence(HWND w) {
         vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
         if (keys.size() > 0) {
             for (auto& el : keys) {
+                if (stopInput) return;
                 pressAKey(w, el);
             }
         }
@@ -623,12 +624,13 @@ void performASequence(HWND w) {
     }
     else {
         for (auto& el : mainSequence->getKeys()) {
+            if (stopInput) return;
             pressAKey(w, el);
         }
     }
 }
 
-void performInput(HWND hwnd) { // find this
+void focusAndSendSequence(HWND hwnd) { // find this
     /*int key = mapOfKeys[defaultMacroKey]; // 0x12
     //if(specialSingleWindowModeKeyCode)
     if (groupToKey.count(referenceToGroup[hwnd])) {
@@ -638,7 +640,7 @@ void performInput(HWND hwnd) { // find this
     //cout << "key: " << key << endl;
 
     SetForegroundWindow(hwnd);
-    customSleep(macroDelayAfterSwitching);
+    customSleep(macroDelayBetweenSwitchingAndFocus);
     SetFocus(hwnd);
 
     customSleep(macroDelayAfterFocus);
@@ -651,7 +653,7 @@ void performInputsEverywhere()
     for (auto& it : referenceToGroup) {
         if (stopInput) return;
         //cout << it.first << endl;
-        performInput(it.first);
+        focusAndSendSequence(it.first);
         customSleep(macroDelayBeforeSwitching);
     }
 }
@@ -681,7 +683,7 @@ void startUsualSequnceMode() {
 void performSingleWindowedHold() {
     HWND w = GetForegroundWindow();
     SetForegroundWindow(w);
-    customSleep(macroDelayAfterSwitching);
+    customSleep(macroDelayBetweenSwitchingAndFocus);
     SetFocus(w);
     customSleep(macroDelayAfterFocus);
     string key = specialSingleWindowModeKeyCode;
@@ -696,7 +698,7 @@ void performSingleWindowedHold() {
 void unHoldDownE() {
     HWND w = GetForegroundWindow();
     SetForegroundWindow(w);
-    customSleep(macroDelayAfterSwitching);
+    customSleep(macroDelayBetweenSwitchingAndFocus);
     SetFocus(w);
     customSleep(macroDelayAfterFocus);
     string key = specialSingleWindowModeKeyCode;
@@ -1015,7 +1017,7 @@ void setGroupKey(HWND h) {
         cout << "Enter the key (Eng only, lowercase, no combinations) or the extra sequence name with \"!\" in the beggining:\n";
         string keyName = "";
         getline(cin, keyName);
-        if (keyName.rfind("!", 0) == 0) {
+        if (keyName.rfind("!", 0) == 0 && groupToKey.count(referenceToGroup[h])) {
             groupToKey[referenceToGroup[h]] = knownOtherSequences[keyName.substr(1)];
         }
         else if (mapOfKeys.count(keyName)) {
@@ -1024,7 +1026,7 @@ void setGroupKey(HWND h) {
             SetForegroundWindow(h);
         }
         else {
-            cout << "Such key doesn't esist or isn't supported yet!" << endl;
+            cout << "Such key (or sequence name) doesn't esist or isn't supported yet!" << endl;
         }
     }
     else {
@@ -1075,7 +1077,7 @@ void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig) {
     setConfigValue(config, "settings/macro/general/initialDelayBeforeFirstIteration", getConfigInt(config, "settings/macro/delaysInMilliseconds/initialDelayBeforeFirstIteration", 100));
     setConfigValue(config, "settings/macro/general/delayBeforeSwitchingWindow", 0);
     setConfigValue(config, "settings/macro/general/delayAfterSwitchingWindow", getConfigInt(config, "settings/macro/delaysInMilliseconds/afterSettingFocus", 200));
-    setConfigValue(config, "settings/macro/general/dontChangeWithoutAReason/afterSettingForegroundButBeforeSettingFocus", getConfigInt(config, "settings/macro/delaysInMilliseconds/afterSwitchingToWindow", 10));
+    setConfigValue(config, "settings/macro/general/settingsChangeOnlyWhenReallyNeeded/afterSettingForegroundButBeforeSettingFocus", getConfigInt(config, "settings/macro/delaysInMilliseconds/afterSwitchingToWindow", 10));
     setConfigValue(config, "settings/macro/general/specialSingleWindowMode/enabled", getConfigBool(config, "settings/macro/justHoldWhenSingleWindow", false));
     setConfigValue(config, "settings/macro/general/specialSingleWindowMode/keyCode", getConfigString(config, "settings/macro/defaultKey", defaultMacroKey));
 
@@ -1152,12 +1154,12 @@ bool loadConfig(string programPath) {
         macroDelayInitial = getConfigInt(config, "settings/macro/general/initialDelayBeforeFirstIteration", 100);
         macroDelayBeforeSwitching = getConfigInt(config, "settings/macro/general/delayBeforeSwitchingWindow", 0);
         macroDelayAfterFocus = getConfigInt(config, "settings/macro/general/delayAfterSwitchingWindow", 200);
-        macroDelayAfterSwitching = getConfigInt(config, "settings/macro/general/dontChangeWithoutAReason/afterSettingForegroundButBeforeSettingFocus", 10);
+        macroDelayBetweenSwitchingAndFocus = getConfigInt(config, "settings/macro/general/settingsChangeOnlyWhenReallyNeeded/afterSettingForegroundButBeforeSettingFocus", 10);
         specialSingleWindowModeEnabled = getConfigBool(config, "settings/macro/general/specialSingleWindowMode/enabled", false);
         specialSingleWindowModeKeyCode = getConfigString(config, "settings/macro/general/specialSingleWindowMode/keyCode", defaultMacroKey);
 
-        sleepRandomnessPersent = getConfigInt(config, "settings/macro/general/delayRandomness/persentage", 10);
-        sleepRandomnessMaxDiff = getConfigInt(config, "settings/macro/general/delayRandomness/maxDifference", 40);
+        sleepRandomnessPersent = getConfigInt(config, "settings/macro/general/randomness/delays/delayOffsetPersentage", 10);
+        sleepRandomnessMaxDiff = getConfigInt(config, "settings/macro/general/randomness/delays/delayOffsetLimit", 40);
 
         if (!wrongConfig) {
             readNewMainSequence(config);
