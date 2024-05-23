@@ -1,6 +1,4 @@
-﻿using namespace std;
-
-#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+﻿#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 
 #include <iostream>
 #include <yaml-cpp/yaml.h>
@@ -17,6 +15,7 @@
 #include <string>
 #include <conio.h> // ig for _getch
 #include <dwmapi.h>
+#include <condition_variable>
 //#include <stdexcept>
 
 #pragma comment(lib, "Dwmapi.lib")
@@ -29,10 +28,10 @@ map<HWND, WindowGroup*> referenceToGroup;
 map<WindowGroup*, KeySequence*> groupToKey;
 WindowGroup* lastGroup;
 bool hideNotMainWindows = false;
-
+std::vector<std::string> failedHotkeys;
 int currentHangWindows = 0;
 
-string currentConfigVersion = "2.1";
+string currentConfigVersion = "2.2";
 wstring rx_name = L"Roblox";
 //wstring vmware_name_part = L"VMware Workstation"; // I needed that
 //wstring mc_name_part = L"Minecraft"; // And this too lmao
@@ -57,7 +56,28 @@ map<string, KeySequence*> knownOtherSequences = map<string, KeySequence*>();
 int sleepRandomnessPersent = 10;
 int sleepRandomnessMaxDiff = 40;
 
-// Should have a better system later, just afraid to add more vectors due to danger of leaks and the fact that I need to make a good config
+// Usual macro pause delays (in seconds)
+
+//int macroPauseAfterKeyboardKeyHeldDown = 20;
+//int macroPauseAfterWindowChange = 7;
+
+//int macroPauseAfterKeyboardInput = 8;
+
+//int manyKeyboardInputsDetectionAmount = 5;
+//int manyKeyboardInputsDetectionDuration = 5000; // in milliseconds
+//int macroPauseAfterManyKeyboardInputs = 14;
+
+//int macroPauseAfterMouseInput = 3;
+
+//int manyMouseInputsDetectionAmount = 5;
+//int manyMouseInputsDetectionDuration = 5000; // in milliseconds
+//int macroPauseAfterManyMouseInputs = 8;
+
+InputsInterruptionManager* interruptionManager;
+
+// therad related
+HHOOK keyboardHook;
+HHOOK mouseHook;
 
 //string mainConfigName = "WsSettings/settings.yml";
 
@@ -192,84 +212,73 @@ public:
     void moveInOrder(HWND* hwnd, int times) {}
 };
 
+bool registerSingleHotkey(int id, UINT fsModifiers, UINT vk, std::string hotkeyName, std::string hotkeyDescription, bool hidden) {
+    if (RegisterHotKey(NULL, id, fsModifiers, vk)) {
+        if (!hidden) std::cout << "Hotkey '" << hotkeyName << "': " << hotkeyDescription << "\n";
+        return true;
+    }
+    else {
+        failedHotkeys.push_back(hotkeyName + " (" + hotkeyDescription + ")");
+        return false;
+    }
+}
+
+bool registerSingleHotkey(int id, UINT fsModifiers, UINT vk, std::string hotkeyName, std::string hotkeyDescription) {
+    return registerSingleHotkey(id, fsModifiers, vk, hotkeyName, hotkeyDescription, false);
+}
+
 void registerHotkeys() {
+    failedHotkeys.clear();
     int totalHotkeys = 28;
 
-    int failed = 0;
-    if (RegisterHotKey(NULL, 1, MOD_ALT | MOD_NOREPEAT, 0xBC)) { wprintf(L"Hotkey 'Alt + ,': Add window to current group\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 2, MOD_ALT | MOD_NOREPEAT, 0xBE)) { wprintf(L"Hotkey 'Alt + .': Prepare for the next group\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 11, MOD_ALT | MOD_NOREPEAT, 0x49)) { wprintf(L"Hotkey 'Alt + I': Edit the window's group\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 3, MOD_ALT | MOD_NOREPEAT, 0x4B)) { wprintf(L"Hotkey 'Alt + K': Shift windows to the left\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 4, MOD_ALT | MOD_NOREPEAT, 0x4C)) { wprintf(L"Hotkey 'Alt + L': Shift windows to the right\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 5, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4B)) { wprintf(L"Hotkey 'Ctrl + Alt + K': Shift ALL windows to the left\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 6, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4C)) { wprintf(L"Hotkey 'Ctrl + Alt + L': Shift ALL windows to the right\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 26, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4B)) { wprintf(L"Hotkey 'Ctrl + Shift + K': Shift ALL OTHER groups to the left\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 27, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4C)) { wprintf(L"Hotkey 'Ctrl + Shift + L': Shift ALL OTHER groups to the right\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 7, MOD_ALT | MOD_NOREPEAT, 0xDD)) { wprintf(L"Hotkey 'Alt + ]': Remove current window from it's group (Has a critical bug)\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 8, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0xDD)) { wprintf(L"Hotkey 'Ctrl + Alt + ]': Delete the entire group current window is in\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 15, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0xDB)) { wprintf(L"Hotkey 'Ctrl + Shift + [': Delete all groups\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 9, MOD_ALT | MOD_NOREPEAT, 0x51)) { wprintf(L"Hotkey 'Alt + Q': Toggle visibility of the opposite windows in this group (NOT SOON WIP)\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 13, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x51)) { wprintf(L"Hotkey 'Ctrl + Alt + Q': Toggle visibility of all not main windows (May not work properly yet with Auto-key macro)\n"); }
-    else failed++;
+    registerSingleHotkey(1, MOD_ALT | MOD_NOREPEAT, 0xBC, "Alt + ,", "Add window to current group");
+    registerSingleHotkey(2, MOD_ALT | MOD_NOREPEAT, 0xBE, "Alt + .", "Prepare for the next group");
+    registerSingleHotkey(11, MOD_ALT | MOD_NOREPEAT, 0x49, "Alt + I'", "Edit the window's group");
+    registerSingleHotkey(3, MOD_ALT | MOD_NOREPEAT, 0x4B, "Alt + K'", "Shift windows to the left");
+    registerSingleHotkey(4, MOD_ALT | MOD_NOREPEAT, 0x4C, "Alt + L'", "Shift windows to the right");
+    registerSingleHotkey(5, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4B, "Ctrl + Alt + K'", "Shift ALL windows to the left");
+    registerSingleHotkey(6, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4C, "Ctrl + Alt + L'", "Shift ALL windows to the right");
+    registerSingleHotkey(26, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4B, "Ctrl + Shift + K", "Shift ALL OTHER groups to the left");
+    registerSingleHotkey(27, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4C, "Ctrl + Shift + L", "Shift ALL OTHER groups to the right");
+    registerSingleHotkey(7, MOD_ALT | MOD_NOREPEAT, 0xDD, "Alt + ]", "Remove current window from it's group (Critical Bug)");
+    registerSingleHotkey(8, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0xDD, "Ctrl + Alt + ]", "Delete the entire group current window is in");
+    registerSingleHotkey(15, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0xDB, "Ctrl + Shift + [", "Delete all groups");
+    registerSingleHotkey(9, MOD_ALT | MOD_NOREPEAT, 0x51, "Alt + Q", "Toggle visibility of the opposite windows in this group (NOT SOON WIP)");
+    registerSingleHotkey(13, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x51, "Ctrl + Alt + Q", "Toggle visibility of all not main windows (May not work properly yet with Auto-key macro)");
     // ctrl shift a do current alt a, but that one should leave window updating in background
-    if (RegisterHotKey(NULL, 10, MOD_ALT | MOD_NOREPEAT, 0x41)) { wprintf(L"Hotkey 'Alt + A': Toggle visibility of every last window in all the pairs and minimize the linked ones\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 18, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x44)) { wprintf(L"Hotkey 'Ctrl + Shift + D': Set the window as main in current group (WIP)\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 19, MOD_ALT | MOD_NOREPEAT, 0x44)) { wprintf(L"Hotkey 'Alt + D': Swap to main window in current group (WIP)\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 23, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x44)) { wprintf(L"Hotkey 'Ctrl + Alt + D': Swap to main window in all groups (WIP)\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 12, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + Alt + U': Get all Roblox and VMWW windows back from background\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 24, MOD_CONTROL | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + U': Put current foregrounded window to background\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 25, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x55)) { wprintf(L"Hotkey 'Ctrl + Shift + U': Get specific windows from background by their name\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 16, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Ctrl + Shift + V': Start/Stop adjusting new Roblox windows to screen quarters (NOT SOON WIP)\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 14, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Ctrl + Alt + V': Connect all Roblox windows to quarter groups\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 30, MOD_ALT | MOD_NOREPEAT, 0x56)) { wprintf(L"Hotkey 'Alt + V': Connect absolutely all Roblox windows\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 28, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x41)) { wprintf(L"Hotkey 'Ctrl + Shift + A': Show all connected windows to foreground\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 17, MOD_ALT | MOD_NOREPEAT, 0x47)) { wprintf(L"Hotkey 'Alt + G': Start/stop the automatical sequence macro for Roblox windows\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 29, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x47)) { wprintf(L"Hotkey 'Ctrl + Alt + G': Set the macro key (or sequence) for this group\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 31, MOD_ALT | MOD_NOREPEAT, 0x48)) { wprintf(L"Hotkey 'Alt + H': Reload all configs\n"); }
-    else failed++;
-    if (RegisterHotKey(NULL, 20, MOD_ALT | MOD_NOREPEAT, 0x50)) { } // wprintf(L"Hotkey 'Alt + P': Show the debug list of the linked windows\n");
-    else failed++;
-    if (RegisterHotKey(NULL, 21, MOD_ALT | MOD_NOREPEAT, 0xDC)) { } // wprintf(L"Hotkey 'Alt + \\': Test\n");
-    else failed++;
+    registerSingleHotkey(10, MOD_ALT | MOD_NOREPEAT, 0x41, "Alt + A", "Toggle visibility of every last window in all the pairs and minimize the linked ones");
+    registerSingleHotkey(18, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x44, "(WIP) Ctrl + Shift + D", "Set the window as main in current group");
+    registerSingleHotkey(19, MOD_ALT | MOD_NOREPEAT, 0x44, "Alt + D", "(WIP) Swap to main window in current group");
+    registerSingleHotkey(23, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x44, "Ctrl + Alt + D", "(WIP) Swap to main window in all groups");
+    registerSingleHotkey(12, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x55, "Ctrl + Alt + U", "Get all RBX and VMWW windows back from background");
+    registerSingleHotkey(24, MOD_CONTROL | MOD_NOREPEAT, 0x55, "Ctrl + U", "Put current foregrounded window to background");
+    registerSingleHotkey(25, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x55, "Ctrl + Shift + U", "Get specific windows from background by their name");
+    registerSingleHotkey(16, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x56, "Ctrl + Shift + V", "(WIP, NOT SOON) Start/Stop adjusting new RBX windows to screen quarters");
+    registerSingleHotkey(14, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x56, "Ctrl + Alt + V", "Connect all RBX windows to 4 quarter groups");
+    registerSingleHotkey(30, MOD_ALT | MOD_NOREPEAT, 0x56, "Alt + V", "Connect absolutely all RBX windows into one single group");
+    registerSingleHotkey(28, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x41, "Ctrl + Shift + A", "Bring all connected windows to foreground");
+    registerSingleHotkey(17, MOD_ALT | MOD_NOREPEAT, 0x47, "Alt + G", "Start/stop the automatical sequence macro for Roblox windows");
+    registerSingleHotkey(29, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x47, "Ctrl + Alt + G", "Set the macro key (or sequence) for this group");
+    registerSingleHotkey(31, MOD_ALT | MOD_NOREPEAT, 0x48, "Alt + H", "Reload all configs");
+    registerSingleHotkey(20, MOD_ALT | MOD_NOREPEAT, 0x50, "Alt + P", "Show the debug list of the linked windows", true);
+    registerSingleHotkey(21, MOD_ALT | MOD_NOREPEAT, 0xDC, "Alt + \\", "Test", true);
 
-    if (failed > 0) {
-        cout << "Failed to register " << failed << " hotkey";
-        if (failed > 1) cout << "s";
-        cout << endl;
-        if (failed >= totalHotkeys) { // that value can be not updated in time
-            cout << "Most likely you have started multiple instances of this programm, sadly you can use only one at a time\n";
+    if (failedHotkeys.size() > 0) {
+        std::cout << "\nFailed to register " << failedHotkeys.size() << " hotkey";
+        if (failedHotkeys.size() > 1) std::cout << "s";
+        std::cout << ":\n";
+
+        for (auto& elem : failedHotkeys) {
+            std::cout << elem << "\n";
+        }
+
+        if (failedHotkeys.size() >= totalHotkeys) { // that value can be not updated in time
+            std::cout << "Most likely you have started multiple instances of this programm, sadly you can use only one at a time\n";
             _getch();
             exit(0);
         }
     }
 
-    //if (RegisterHotKey(NULL, 22, MOD_ALT | MOD_NOREPEAT, 0xDC)) { wprintf(L"Hotkey 'Alt + N': Start/Stop sending messages in RBX chat\n"); }
     cout << endl;
 }
 
@@ -1055,7 +1064,6 @@ YAML::Node getDefaultSequenceList() {
 
 void resetMainSequence(const YAML::Node &config) {
     if (mainSequence != nullptr) {
-        mainSequence->~KeySequence();
         delete mainSequence;
         mainSequence = nullptr;
     }
@@ -1069,6 +1077,39 @@ void readNewMainSequence(const YAML::Node& config) {
 void readDefaultMainSequence(const YAML::Node& config) {
     resetMainSequence(config);
     mainSequence = new KeySequence(getDefaultSequenceList());
+}
+
+void resetInterruptionManager(const YAML::Node& config) {
+    if (interruptionManager != nullptr) {
+        delete interruptionManager;
+        interruptionManager = nullptr;
+    }
+}
+
+void readNewInterruptionManager(const YAML::Node& config) {
+    resetInterruptionManager(config);
+    interruptionManager = new InputsInterruptionManager();
+
+    interruptionManager->setMacroPauseAfterKeyboardInput(getConfigInt(config, "settings/macro/interruptions/keyboard/startAtSeconds", 8));
+    interruptionManager->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startAtSeconds", 3));
+    interruptionManager->setInputsListCapacity(getConfigInt(config, "settings/macro/interruptions/rememberMaximumInputs", 40));
+
+    interruptionManager->initType(getConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases"), KEYBOARD);
+    interruptionManager->initType(getConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases"), MOUSE);
+    interruptionManager->initType(getConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases"), ANY_INPUT);
+}
+
+void readDefaultInterruptionManager(const YAML::Node& config) {
+    resetInterruptionManager(config);
+    interruptionManager = new InputsInterruptionManager();
+
+    interruptionManager->setMacroPauseAfterKeyboardInput(getConfigInt(config, "settings/macro/interruptions/keyboard/startAtSeconds", 8));
+    interruptionManager->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startAtSeconds", 3));
+    interruptionManager->setInputsListCapacity(getConfigInt(config, "settings/macro/interruptions/rememberMaximumInputs", 40));
+
+    interruptionManager->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(KEYBOARD), KEYBOARD);
+    interruptionManager->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(MOUSE), MOUSE);
+    interruptionManager->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(ANY_INPUT), ANY_INPUT);
 }
 
 void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig) {
@@ -1149,6 +1190,10 @@ bool loadConfig(string programPath) {
                 updateConfig2_0_TO_2_1(config, wrongConfig);
                 oldConfigVersion = "2.1";
             }
+            if (oldConfigVersion == "2.1") {
+                // no refactoring
+                oldConfigVersion = "2.2";
+            }
         }
 
         macroDelayInitial = getConfigInt(config, "settings/macro/general/initialDelayBeforeFirstIteration", 100);
@@ -1161,10 +1206,15 @@ bool loadConfig(string programPath) {
         sleepRandomnessPersent = getConfigInt(config, "settings/macro/general/randomness/delays/delayOffsetPersentage", 10);
         sleepRandomnessMaxDiff = getConfigInt(config, "settings/macro/general/randomness/delays/delayOffsetLimit", 40);
 
+        // if no yaml structure errors
         if (!wrongConfig) {
+            // resetting main sequence and reading what config has
             readNewMainSequence(config);
+            // if there is nothing
             if (mainSequence->countEnabledKeys() == 0) {
+                // set default values
                 setConfigValue(config, "settings/macro/mainKeySequence", getDefaultSequenceList());
+                // reset the sequence and read the yaml object again
                 readNewMainSequence(config);
             }
         }
@@ -1172,8 +1222,8 @@ bool loadConfig(string programPath) {
             readDefaultMainSequence(config);
         }
 
+        // extra sequences
         if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", vector<YAML::Node>());
-        
         YAML::Node extraSequences = getConfigValue(config, "settings/macro/extraKeySequences");
         if (extraSequences.IsMap()) {
             //for (auto& otherSeq : knownOtherSequences) {
@@ -1183,6 +1233,36 @@ bool loadConfig(string programPath) {
             for (YAML::const_iterator at = extraSequences.begin(); at != extraSequences.end(); at++) {
                 knownOtherSequences[at->first.as<string>()] = new KeySequence(at->second);
             }
+        }
+
+        // if no yaml structure errors
+        if (!wrongConfig) {
+            // resetting input interruption manager and reading what config has
+            readNewInterruptionManager(config);
+            bool nothingKeyboard = interruptionManager->getConfigurations(KEYBOARD)->size() == 0;
+            bool nothingMouse = interruptionManager->getConfigurations(MOUSE)->size() == 0;
+            // if there is nothing
+            if (nothingKeyboard || nothingMouse) {
+                // set default values
+                YAML::Node* defaultList = interruptionManager->getDefaultInterruptionConfigsList(KEYBOARD);
+                if(nothingKeyboard) setConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases", *defaultList);
+                delete defaultList;
+
+                defaultList = interruptionManager->getDefaultInterruptionConfigsList(MOUSE);
+                if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases", *defaultList);
+                delete defaultList;
+
+                defaultList = interruptionManager->getDefaultInterruptionConfigsList(ANY_INPUT);
+                if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases", *defaultList);
+                delete defaultList;
+
+                // reset the manager and read the yaml object again
+                readNewInterruptionManager(config);
+            }
+        }
+        else {
+            readDefaultMainSequence(config);
+            readDefaultInterruptionManager(config);
         }
         
         vector<string> localDefaultFastForegroundWindows;
@@ -1207,8 +1287,109 @@ bool loadConfig(string programPath) {
     }
 }
 
+LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (interruptionManager != nullptr) {
+        if (nCode >= 0) {
+            //cout << interruptionManager->getConfigurations(KEYBOARD)->size() << '\n';
+            //cout << interruptionManager->getConfigurations(MOUSE)->size() << '\n';
+
+            int key = reinterpret_cast<LPKBDLLHOOKSTRUCT>(lParam)->vkCode;
+            if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+                // Key is pressed down
+                interruptionManager->getKeyStates()[key] = true;
+                // Handle key press event
+                //setNewDelay(macroPauseAfterKeyboardKeyHeldDown);
+            }
+            else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+                // Key is released
+                interruptionManager->getKeyStates()[key] = false;
+                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterKeyboardInput());
+                // Handle key release event
+                //if (untilNextMacroRetry.load() <= macroPauseAfterKeyboardKeyHeldDown) untilNextMacroRetry.store(macroPauseAfterKeyboardInput);
+            }
+
+            // Check if any key is being held down
+            /*bool anyKeyHeldDown = false;
+            for (const auto& pair : keyStates) {
+                if (pair.second) {
+                    anyKeyHeldDown = true;
+                    break;
+                }
+            }
+            if (anyKeyHeldDown) {
+                // Handle case when any key is held down
+            }*/
+
+            if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN || wParam == WM_CHAR) {
+                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterKeyboardInput());
+                interruptionManager->checkForManyInputsOnNew(KEYBOARD);
+                interruptionManager->checkForManyInputsOnNew(ANY_INPUT);
+            }
+        }
+    }
+    // Call the next hook in the hook chain
+    return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
+LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (interruptionManager != nullptr) {
+        if (nCode >= 0) {
+            switch (wParam) {
+            case WM_LBUTTONDOWN:
+                // Left mouse button down event
+                //if (untilNextMacroRetry.load() <= macroPauseAfterKeyboardKeyHeldDown) untilNextMacroRetry.store(macroPauseAfterMouseInput);
+                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterMouseInput());
+                interruptionManager->checkForManyInputsOnNew(MOUSE);
+                interruptionManager->checkForManyInputsOnNew(ANY_INPUT);
+                break;
+            case WM_LBUTTONUP:
+                // Left mouse button up event
+                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterMouseInput());
+                break;
+            case WM_RBUTTONDOWN:
+                // Right mouse button down event
+                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterMouseInput());
+                interruptionManager->checkForManyInputsOnNew(MOUSE);
+                interruptionManager->checkForManyInputsOnNew(ANY_INPUT);
+                break;
+            case WM_RBUTTONUP:
+                // Right mouse button up event
+                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterMouseInput());
+                break;
+                // Add cases for other mouse events as needed
+            }
+        }
+    }
+
+    return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
+void testWait() {
+    while (true) {
+        if (interruptionManager == nullptr) continue;
+        int curValue = interruptionManager->getUntilNextMacroRetryAtomic().load();
+        std::cout << curValue << std::endl;
+
+        curValue -= 1;
+        if (curValue < 0) curValue = 0;
+        interruptionManager->getUntilNextMacroRetryAtomic().store(curValue);
+        Sleep(1000);
+    }
+    //std::cout << "Waining...\n";
+    //cv.wait(lock, [] { return (untilNextMacroRetry.load() <= 0); });
+    //std::cout << "Done waiting\n";
+}
+
 int main(int argc, char* argv[]) {
     setlocale(0, "");
+
+    // Listening iputs for macro interuptions
+    std::thread(testWait).detach();
+    keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, NULL, 0);
+    if (keyboardHook == NULL) std::cout << "Failed to register the keyboard hook for macro pauses" << std::endl;
+    mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, NULL, 0);
+    if (mouseHook == NULL) std::cout << "Failed to register the mouse hook for macro pauses" << std::endl;
+
     initializeRandom();
     loadConfig(argv[0]);
     registerHotkeys();

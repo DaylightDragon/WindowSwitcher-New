@@ -1,6 +1,7 @@
 #pragma once
 using namespace std;
 #include <string>
+#include <yaml-cpp/yaml.h>
 
 YAML::Node loadYaml(string programPath, const std::string& folderPath, const std::string& fileName, bool& wrongConfig);
 void saveYaml(YAML::Node &config, string path);

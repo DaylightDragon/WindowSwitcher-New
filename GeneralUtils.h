@@ -1,5 +1,7 @@
 #pragma once
 
-string getProgramFolderPath(const string& programPath);
+#include <string>
+
+std::string getProgramFolderPath(const std::string& programPath);
 void initializeRandom();
 int randomizeValue(int value, int percentage, int maxDifference);

@@ -486,7 +486,7 @@ int getConfigInt(const YAML::Node &config, string key, int defaultValue) {
         data = getConfigValue(config, key);
     }
     catch (const YAML::Exception& e) {
-        addConfigLoadingMessage("WARNING | WARNING | Unable to read config value \"" + key + "\", using default value \"" + to_string(defaultValue) + "\" instead.");
+        addConfigLoadingMessage("WARNING | Unable to read config value \"" + key + "\", using default value \"" + to_string(defaultValue) + "\" instead.");
         return defaultValue;
     }
     if (!data.IsDefined()) {
