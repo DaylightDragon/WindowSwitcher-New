@@ -31,7 +31,7 @@ WindowGroup* lastGroup;
 KeySequence* mainSequence;
 map<string, KeySequence*> knownOtherSequences = map<string, KeySequence*>();
 std::vector<std::string> failedHotkeys;
-InputsInterruptionManager* interruptionManager;
+std::atomic<InputsInterruptionManager*> interruptionManager;
 
 vector<HWND> autoGroup1;
 vector<HWND> autoGroup2;
@@ -79,6 +79,10 @@ std::thread* currentMacroLoopThread;
 std::thread* macroDelayWatcherThread;
 std::thread* keyboardHookThread;
 std::thread* mouseHookThread;
+
+std::condition_variable macroWaitCv;
+std::mutex macroWaitMutex;
+std::unique_lock<std::mutex> macroWaitLock = std::unique_lock<std::mutex>(macroWaitMutex);
 
 bool debugMode = IsDebuggerPresent();;
 //string mainConfigName = "WsSettings/settings.yml";
@@ -604,6 +608,20 @@ void restoreAllConnected() {
     }
 }
 
+bool waitIfInterrupted() {
+    if (interruptionManager == nullptr || !interruptionManager.load()->isModeEnabled().load()) return false;
+    int waitFor = interruptionManager.load()->getUntilNextMacroRetryAtomic().load();
+    bool interrupted = waitFor > 0;
+    if (interrupted) {
+        //std::cout << "Waiting...\n";
+        macroWaitCv.wait(macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
+        //interruptionManager.load()->getConditionVariable().wait(interruptionManager.load()->getLock(), [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
+        //std::cout << "Done waiting\n";
+    }
+
+    return interrupted;
+}
+
 void keyPressInput(WORD keyCode)
 {
     INPUT input;
@@ -625,7 +643,7 @@ void keyReleaseInput(WORD keyCode)
 }
 
 void keyPressString(string key) {
-    interruptionManager->addPendingSentInput(key);
+    interruptionManager.load()->addPendingSentInput(key);
     keyPressInput(mapOfKeys[key]);
 }
 
@@ -633,41 +651,50 @@ void keyReleaseString(string key) {
     keyReleaseInput(mapOfKeys[key]);
 }
 
-void pressAndUnpressAKey(HWND w, Key k) {
-    if (!k.enabled || k.keyCode == "EXAMPLE") return;
-    if (stopMacroInput) return;
+bool pressAndUnpressAKey(HWND w, Key k) { // returns true if was paused and needs to repeat the cycle
+    if (!k.enabled || k.keyCode == "EXAMPLE") return false;
+    if (stopMacroInput) return false;
+    if (waitIfInterrupted()) return true;
 
     customSleep(k.beforeKeyPress);
-    if (stopMacroInput) return;
+    if (stopMacroInput) return false;
+    if (waitIfInterrupted()) return true;
 
-    interruptionManager->addPendingSentInput(k.keyCode); // BEFORE actually pressing! Or the handler will get it before it's added
+    interruptionManager.load()->addPendingSentInput(k.keyCode); // BEFORE actually pressing! Or the handler will get it before it's added
     keyPressInput(mapOfKeys[k.keyCode]);
     
     customSleep(k.holdFor);
     keyReleaseInput(mapOfKeys[k.keyCode]);
-    if (stopMacroInput) return;
+    if (stopMacroInput) return false;
+    if (waitIfInterrupted()) return true;
 
     customSleep(k.afterKeyPress);
 }
 
 void performASequence(HWND w) {
-    if (groupToKey.count(referenceToGroup[w])) {
-        vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
-        if (keys.size() > 0) {
-            for (auto& el : keys) {
-                if (stopMacroInput) return;
-                pressAndUnpressAKey(w, el);
+    bool hasBeenInterrupted = true;
+    while (hasBeenInterrupted) {
+        if (groupToKey.count(referenceToGroup[w])) {
+            vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
+            if (keys.size() > 0) {
+                for (auto& el : keys) {
+                    if (stopMacroInput) return;
+                    hasBeenInterrupted = pressAndUnpressAKey(w, el);
+                    if (hasBeenInterrupted) break;
+                }
+            }
+            else {
+                cout << "You can't have no actions in a sequence! Waiting a bit instead\n"; // kostil
+                customSleep(100);
             }
         }
         else {
-            cout << "You can't have no actions in a sequence! Waiting a bit instead" << endl; // kostil
-            customSleep(100);
-        }
-    }
-    else {
-        for (auto& el : mainSequence->getKeys()) {
-            if (stopMacroInput) return;
-            pressAndUnpressAKey(w, el);
+            for (auto& el : mainSequence->getKeys()) {
+                if (stopMacroInput) return;
+                hasBeenInterrupted = pressAndUnpressAKey(w, el);
+                // The macro has been interrupted and paused, and now we need to restart the entire sequence
+                if (hasBeenInterrupted) break;
+            }
         }
     }
 }
@@ -690,11 +717,9 @@ void focusAndSendSequence(HWND hwnd) { // find this
     performASequence(hwnd);
 }
 
-void performInputsEverywhere()
-{
+void performInputsEverywhere() {
     for (auto& it : referenceToGroup) {
         if (stopMacroInput) return;
-        //cout << it.first << endl;
         focusAndSendSequence(it.first);
         customSleep(macroDelayBeforeSwitching);
     }
@@ -720,6 +745,7 @@ void startUsualMacroLoop() {
 
 void startUsualSequnceMode() {
     currentMacroLoopThread = new thread(startUsualMacroLoop);
+    interruptionManager.load()->getUntilNextMacroRetryAtomic().store(0);
 }
 
 void performSingleWindowedHold() {
@@ -753,7 +779,7 @@ void releaseConfiguredKey() {
 
 void toggleMacroState() {
     if (referenceToGroup.size() == 0) {
-        cout << "You haven't linked any windows yet!" << endl;
+        cout << "You haven't linked any windows yet!\n";
     }
     else if (stopMacroInput) {
         stopMacroInput = false;
@@ -1109,29 +1135,31 @@ void resetInterruptionManager(const YAML::Node& config) {
 }
 
 void rememberInitialPermanentSettings() {
-    oldConfigValue_startAnything = interruptionManager->getShouldStartAnything().load();
-    oldConfigValue_startKeyboardHook = interruptionManager->getShouldStartKeyboardHook().load();
-    oldConfigValue_startMouseHook = interruptionManager->getShouldStartMouseHook().load();
+    oldConfigValue_startAnything = interruptionManager.load()->getShouldStartAnything().load();
+    oldConfigValue_startKeyboardHook = interruptionManager.load()->getShouldStartKeyboardHook().load();
+    oldConfigValue_startMouseHook = interruptionManager.load()->getShouldStartMouseHook().load();
 }
 
 void readSimpleInteruptionManagerSettings(const YAML::Node& config) {
-    interruptionManager->setMacroPauseAfterKeyboardInput(getConfigInt(config, "settings/macro/interruptions/keyboard/startWithDelay_seconds", 8));
-    interruptionManager->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startWithDelay_seconds", 3));
-    interruptionManager->setInputsListCapacity(getConfigInt(config, "settings/macro/interruptions/rememberMaximumInputsEach", 40));
-    interruptionManager->setInputSeparationWaitingTimeout(getConfigInt(config, "settings/macro/interruptions/macroInputArrivalTimeoutToSeparateFromUserInputs", 1000));
-    interruptionManager->setModeEnabled(getConfigBool(config, "settings/macro/interruptions/interruptionsWorkingRightNow", false));
+    interruptionManager.load()->setMacroPauseAfterKeyboardInput(getConfigInt(config, "settings/macro/interruptions/keyboard/startWithDelay_seconds", 8));
+    interruptionManager.load()->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startWithDelay_seconds", 3));
+    interruptionManager.load()->setInputsListCapacity(getConfigInt(config, "settings/macro/interruptions/rememberMaximumInputsEach", 40));
+    interruptionManager.load()->setInputSeparationWaitingTimeout(getConfigInt(config, "settings/macro/interruptions/macroInputArrivalTimeoutToSeparateFromUserInputs", 1000));
+    interruptionManager.load()->setInformOnEvents(getConfigBool(config, "settings/macro/interruptions/informOnChangingDelay", false));
+    interruptionManager.load()->setModeEnabled(getConfigBool(config, "settings/macro/interruptions/interruptionsWorkingRightNow", false));
     
-    interruptionManager->setShouldStartAnything(getConfigBool(config, "settings/requiresApplicationRestart/macroInterruptions/enableTheseOptions", true));
-    interruptionManager->setShouldStartKeyboardHook(getConfigBool(config, "settings/requiresApplicationRestart/macroInterruptions/keyboardListener", true));
-    if (!interruptionManager->getShouldStartAnything().load()) interruptionManager->setShouldStartKeyboardHook(false);
-    interruptionManager->setShouldStartMouseHook(getConfigBool(config, "settings/requiresApplicationRestart/macroInterruptions/mouseListener", true));
-    if (!interruptionManager->getShouldStartAnything().load()) interruptionManager->setShouldStartMouseHook(false);
-    interruptionManager->setShouldStartDelayModificationLoop(interruptionManager->getShouldStartKeyboardHook().load() || interruptionManager->getShouldStartMouseHook().load());
-    if (!interruptionManager->getShouldStartAnything().load()) interruptionManager->setShouldStartDelayModificationLoop(false);
+    // hooks
+    interruptionManager.load()->setShouldStartAnything(getConfigBool(config, "settings/requiresApplicationRestart/macroInterruptions/enableTheseOptions", true));
+    interruptionManager.load()->setShouldStartKeyboardHook(getConfigBool(config, "settings/requiresApplicationRestart/macroInterruptions/keyboardListener", true));
+    if (!interruptionManager.load()->getShouldStartAnything().load()) interruptionManager.load()->setShouldStartKeyboardHook(false);
+    interruptionManager.load()->setShouldStartMouseHook(getConfigBool(config, "settings/requiresApplicationRestart/macroInterruptions/mouseListener", true));
+    if (!interruptionManager.load()->getShouldStartAnything().load()) interruptionManager.load()->setShouldStartMouseHook(false);
+    interruptionManager.load()->setShouldStartDelayModificationLoop(interruptionManager.load()->getShouldStartKeyboardHook().load() || interruptionManager.load()->getShouldStartMouseHook().load());
+    if (!interruptionManager.load()->getShouldStartAnything().load()) interruptionManager.load()->setShouldStartDelayModificationLoop(false);
 
     if (!initialConfigLoading && (
-        oldConfigValue_startKeyboardHook != interruptionManager->getShouldStartKeyboardHook().load() ||
-        oldConfigValue_startMouseHook != interruptionManager->getShouldStartMouseHook().load())) {
+        oldConfigValue_startKeyboardHook != interruptionManager.load()->getShouldStartKeyboardHook().load() ||
+        oldConfigValue_startMouseHook != interruptionManager.load()->getShouldStartMouseHook().load())) {
         addConfigLoadingMessage("WARNING | Some config values can't be applied in runtime, you need to restart the application for that");
     }
 }
@@ -1141,9 +1169,9 @@ void readNewInterruptionManager(const YAML::Node& config) {
     interruptionManager = new InputsInterruptionManager();
     //cout << "readNewInterruptionManager\n";
 
-    interruptionManager->initType(getConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases"), KEYBOARD);
-    interruptionManager->initType(getConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases"), MOUSE);
-    interruptionManager->initType(getConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases"), ANY_INPUT);
+    interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases"), KEYBOARD);
+    interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases"), MOUSE);
+    interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases"), ANY_INPUT);
 
     readSimpleInteruptionManagerSettings(config);
 
@@ -1159,9 +1187,9 @@ void readDefaultInterruptionManager(const YAML::Node& config) {
     interruptionManager = new InputsInterruptionManager();
     //cout << "readDefaultInterruptionManager\n";
 
-    interruptionManager->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(KEYBOARD), KEYBOARD);
-    interruptionManager->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(MOUSE), MOUSE);
-    interruptionManager->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(ANY_INPUT), ANY_INPUT);
+    interruptionManager.load()->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(KEYBOARD), KEYBOARD);
+    interruptionManager.load()->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(MOUSE), MOUSE);
+    interruptionManager.load()->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(ANY_INPUT), ANY_INPUT);
 
     readSimpleInteruptionManagerSettings(config);
 }
@@ -1293,21 +1321,21 @@ bool loadConfig(string programPath) {
         if (!wrongConfig) {
             // resetting input interruption manager and reading what config has
             readNewInterruptionManager(config);
-            bool nothingKeyboard = interruptionManager->getConfigurations(KEYBOARD)->size() == 0;
-            bool nothingMouse = interruptionManager->getConfigurations(MOUSE)->size() == 0;
+            bool nothingKeyboard = interruptionManager.load()->getConfigurations(KEYBOARD)->size() == 0;
+            bool nothingMouse = interruptionManager.load()->getConfigurations(MOUSE)->size() == 0;
             // if there is nothing
             if (nothingKeyboard || nothingMouse) {
                 //cout << "Nothing\n";
                 // set default values
-                YAML::Node* defaultList = interruptionManager->getDefaultInterruptionConfigsList(KEYBOARD);
+                YAML::Node* defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(KEYBOARD);
                 if(nothingKeyboard) setConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases", *defaultList);
                 delete defaultList;
 
-                defaultList = interruptionManager->getDefaultInterruptionConfigsList(MOUSE);
+                defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(MOUSE);
                 if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases", *defaultList);
                 delete defaultList;
 
-                defaultList = interruptionManager->getDefaultInterruptionConfigsList(ANY_INPUT);
+                defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(ANY_INPUT);
                 if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases", *defaultList);
                 delete defaultList;
 
@@ -1345,12 +1373,12 @@ bool loadConfig(string programPath) {
 }
 
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
-    if (interruptionManager != nullptr && interruptionManager->getModeEnabled().load()) { // interruptionManager->getModeEnabled().load()
+    if (interruptionManager != nullptr && interruptionManager.load()->isModeEnabled().load()) { // interruptionManager.load()->getModeEnabled().load()
         if (nCode >= 0) {
             bool ignore = false;
 
-            //cout << interruptionManager->getConfigurations(KEYBOARD)->size() << '\n';
-            //cout << interruptionManager->getConfigurations(MOUSE)->size() << '\n';
+            //cout << interruptionManager.load()->getConfigurations(KEYBOARD)->size() << '\n';
+            //cout << interruptionManager.load()->getConfigurations(MOUSE)->size() << '\n';
 
             int key = reinterpret_cast<LPKBDLLHOOKSTRUCT>(lParam)->vkCode;
             if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN || wParam == WM_CHAR) {
@@ -1374,20 +1402,20 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                     }
                 }
 
-                if (interruptionManager->checkIsInputPending(formattedKey)) ignore = true;
+                if (interruptionManager.load()->checkIsInputPending(formattedKey)) ignore = true;
                 
                 if (!ignore) {
-                    interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterKeyboardInput().load());
-                    interruptionManager->checkForManyInputsOnNew(KEYBOARD);
-                    interruptionManager->checkForManyInputsOnNew(ANY_INPUT);
+                    interruptionManager.load()->setNewDelay(interruptionManager.load()->getMacroPauseAfterKeyboardInput().load());
+                    interruptionManager.load()->checkForManyInputsOnNew(KEYBOARD);
+                    interruptionManager.load()->checkForManyInputsOnNew(ANY_INPUT);
                 }
 
-                //interruptionManager->getKeyStates()[key] = true;
+                //interruptionManager.load()->getKeyStates()[key] = true;
                 //setNewDelay(macroPauseAfterKeyboardKeyHeldDown);
             }
             else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
-                //interruptionManager->getKeyStates()[key] = false;
-                /*interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterKeyboardInput().load());*/
+                //interruptionManager.load()->getKeyStates()[key] = false;
+                /*interruptionManager.load()->setNewDelay(interruptionManager.load()->getMacroPauseAfterKeyboardInput().load());*/
                 //if (untilNextMacroRetry.load() <= macroPauseAfterKeyboardKeyHeldDown) untilNextMacroRetry.store(macroPauseAfterKeyboardInput);
             }
 
@@ -1409,29 +1437,29 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 }
 
 LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
-    if (interruptionManager != nullptr && interruptionManager->getModeEnabled().load()) {
+    if (interruptionManager != nullptr && interruptionManager.load()->isModeEnabled().load()) {
         if (nCode >= 0) {
             switch (wParam) {
             case WM_LBUTTONDOWN:
                 // Left mouse button down event
                 //if (untilNextMacroRetry.load() <= macroPauseAfterKeyboardKeyHeldDown) untilNextMacroRetry.store(macroPauseAfterMouseInput);
-                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterMouseInput().load());
-                interruptionManager->checkForManyInputsOnNew(MOUSE);
-                interruptionManager->checkForManyInputsOnNew(ANY_INPUT);
+                interruptionManager.load()->setNewDelay(interruptionManager.load()->getMacroPauseAfterMouseInput().load());
+                interruptionManager.load()->checkForManyInputsOnNew(MOUSE);
+                interruptionManager.load()->checkForManyInputsOnNew(ANY_INPUT);
                 break;
             case WM_LBUTTONUP:
                 // Left mouse button up event
-                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterMouseInput().load());
+                interruptionManager.load()->setNewDelay(interruptionManager.load()->getMacroPauseAfterMouseInput().load());
                 break;
             case WM_RBUTTONDOWN:
                 // Right mouse button down event
-                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterMouseInput().load());
-                interruptionManager->checkForManyInputsOnNew(MOUSE);
-                interruptionManager->checkForManyInputsOnNew(ANY_INPUT);
+                interruptionManager.load()->setNewDelay(interruptionManager.load()->getMacroPauseAfterMouseInput().load());
+                interruptionManager.load()->checkForManyInputsOnNew(MOUSE);
+                interruptionManager.load()->checkForManyInputsOnNew(ANY_INPUT);
                 break;
             case WM_RBUTTONUP:
                 // Right mouse button up event
-                interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterMouseInput().load());
+                interruptionManager.load()->setNewDelay(interruptionManager.load()->getMacroPauseAfterMouseInput().load());
                 break;
                 // Add cases for other mouse events as needed
             }
@@ -1477,17 +1505,33 @@ void MouseHookFunc() {
     }
 }
 
+void notifyTheMacro() {
+    macroWaitCv.notify_all();
+}
+
+void storeCurDelay(int delay) {
+    if (delay < 0) delay = 0;
+    interruptionManager.load()->getUntilNextMacroRetryAtomic().store(delay);
+}
+
 void macroDelayModificationLoop() {
     while (true) {
         // important!
         //std::cout << "";
-        if (interruptionManager != nullptr && interruptionManager->getModeEnabled().load()) {
-            int curValue = interruptionManager->getUntilNextMacroRetryAtomic().load();
-            cout << curValue << endl;
+        if (interruptionManager != nullptr && interruptionManager.load()->isModeEnabled().load()) {
+            int curValue = interruptionManager.load()->getUntilNextMacroRetryAtomic().load();
+            //cout << curValue << endl;
 
             curValue -= 1;
-            if (curValue < 0) curValue = 0;
-            interruptionManager->getUntilNextMacroRetryAtomic().store(curValue);
+            if (curValue == 0) {
+                storeCurDelay(curValue);
+                notifyTheMacro();
+                if(interruptionManager.load()->getInformOnEvents()) cout << "Unpaused\n";
+                
+            }
+            else {
+                storeCurDelay(curValue);
+            }
         }
         Sleep(1000);
     }
@@ -1565,17 +1609,17 @@ int actualMain(int argc, char* argv[]) {
     printConfigLoadingMessages();
 
     // Listening for inputs for macro interuptions
-    if (interruptionManager->getShouldStartDelayModificationLoop().load()) {
+    if (interruptionManager.load()->getShouldStartDelayModificationLoop().load()) {
         macroDelayWatcherThread = new std::thread(macroDelayModificationLoop);
         macroDelayWatcherThread->detach();
     }
-    if (interruptionManager->getShouldStartKeyboardHook().load()) {
+    if (interruptionManager.load()->getShouldStartKeyboardHook().load()) {
         keyboardHookThread = new std::thread(keyboardHookFunc);
         keyboardHookThread->detach();
         //cout << "Priority " << GetThreadPriority(keyboardHook) << endl;
         //SetThreadPriority(keyboardHook, THREAD_PRIORITY_HIGHEST);
     }
-    if (interruptionManager->getShouldStartMouseHook().load()) {
+    if (interruptionManager.load()->getShouldStartMouseHook().load()) {
         mouseHookThread = new std::thread(MouseHookFunc);
         mouseHookThread->detach();
     }
@@ -1689,7 +1733,7 @@ int actualMain(int argc, char* argv[]) {
             }
             if (msg.wParam == 20) { // debug
                 //cout << ((&referenceToGroup==NULL) || referenceToGroup.size()) << endl;
-                if ((&referenceToGroup != NULL) && referenceToGroup.size() > 0) {
+                if (referenceToGroup.size() > 0) {
                     //cout << "The group and size (make sure not console): ";
                     //if (referenceToGroup.count(curHwnd)) cout << (referenceToGroup.find(curHwnd)->second) << " " << (*(referenceToGroup.find(curHwnd)->second)).size() << endl;
 
@@ -1700,6 +1744,12 @@ int actualMain(int argc, char* argv[]) {
                         cout << endl;
                     }
                 }
+            }
+            if (msg.wParam == 21) { // real debug
+                cout << "Waiting2...\n";
+                //macroWaitLock = std::unique_lock<std::mutex>(macroWaitMutex);
+                macroWaitCv.wait(macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
+                cout << "Done2\n";
             }
             hungWindowsAnnouncement();
         }

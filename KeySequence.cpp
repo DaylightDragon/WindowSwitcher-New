@@ -145,7 +145,7 @@ public:
         this->macroPause = macroPause;
     }
 
-    bool fitsCurrentCase(std::vector<std::chrono::steady_clock::time_point>* inputsList, std::condition_variable& cv) {
+    bool fitsCurrentCase(std::vector<std::chrono::steady_clock::time_point>* inputsList) {
         auto begin = inputsList->begin();
         auto end = inputsList->end();
 
@@ -196,12 +196,12 @@ class InputsInterruptionManager {
         std::vector<SentInput> pendingSentInputs;
         std::atomic<int> untilNextMacroRetry;
         std::unordered_map<int, bool> keyStates;
-        std::condition_variable cv;
-        std::mutex mtx;
-        std::unique_lock<std::mutex>* lock;
+        //std::condition_variable cv;
+        //std::mutex mtx;
         std::mutex threadSafetyMutex;
 
         std::atomic<bool> modeEnabled = false;
+        std::atomic<bool> informOnEvents = false;
 
         // requires restarting the app
         std::atomic<bool> shouldStartAnything = false;
@@ -265,12 +265,20 @@ class InputsInterruptionManager {
 
         // getters and setters for booleans
 
-        std::atomic<bool>& getModeEnabled() {
+        std::atomic<bool>& isModeEnabled() {
             return modeEnabled;
         }
 
         void setModeEnabled(bool modeEnabled) {
             this->modeEnabled.store(modeEnabled);
+        }
+
+        std::atomic<bool>& getInformOnEvents() {
+            return informOnEvents;
+        }
+
+        void setInformOnEvents(bool informOnEvents) {
+            this->informOnEvents.store(informOnEvents);
         }
 
         std::atomic<bool>& getShouldStartAnything() {
@@ -307,13 +315,17 @@ class InputsInterruptionManager {
 
         // important getters
 
-        std::condition_variable& getConditionVariable() {
+        /*std::condition_variable& getConditionVariable() {
             return cv;
-        }
+        }*/
 
-        std::unique_lock<std::mutex>& getLock() {
-            return *lock;
-        }
+        //std::unique_lock<std::mutex>& getLock() {
+            //return *lock;
+        //}
+
+        /*std::mutex& getMacroWaitMutex() {
+            return mtx;
+        }*/
 
         std::atomic<int>& getUntilNextMacroRetryAtomic() {
             return untilNextMacroRetry;
@@ -327,7 +339,8 @@ class InputsInterruptionManager {
 
         InputsInterruptionManager() {
             untilNextMacroRetry.store(0);
-            lock = new std::unique_lock<std::mutex>(mtx);
+            //std::unique_lock<std::mutex>* lock;
+            //lock = new std::unique_lock<std::mutex>(mtx);
             keyboardConfs = new std::vector<ManyInputsConfiguration>();
             mouseConfs = new std::vector<ManyInputsConfiguration>();
             combinedConfs = new std::vector<ManyInputsConfiguration>();
@@ -337,7 +350,7 @@ class InputsInterruptionManager {
         }
 
         ~InputsInterruptionManager() {
-            delete lock;
+            //delete lock;
             delete keyboardConfs;
             delete mouseConfs;
             delete combinedConfs;
@@ -369,7 +382,12 @@ class InputsInterruptionManager {
 
         void setNewDelay(int delay) {
             // looks thread safe enough already
-            if (untilNextMacroRetry.load() < delay) untilNextMacroRetry.store(delay);
+            if (untilNextMacroRetry.load() < delay) {
+                untilNextMacroRetry.store(delay);
+                if (informOnEvents.load()) {
+                    cout << "Paused for " << delay << " seconds...\n";
+                }
+            }
         }
 
         /*void addInput(InterruptionInputType type) {
@@ -393,12 +411,12 @@ class InputsInterruptionManager {
             }
 
             for (auto& item : *confs) {
-                if (item.fitsCurrentCase(lastInputTimestamps, cv)) {
+                if (item.fitsCurrentCase(lastInputTimestamps)) {
                     setNewDelay(item.getMacroPause());
                 }
             }
 
-            cv.notify_all();
+            //cv.notify_all();
         }
 
         static YAML::Node* getDefaultInterruptionConfigsList(InterruptionInputType type) {
