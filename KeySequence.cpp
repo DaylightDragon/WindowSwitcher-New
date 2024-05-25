@@ -174,6 +174,16 @@ public:
     }
 };
 
+struct SentInput {
+    std::string key;
+    std::chrono::steady_clock::time_point timestamp;
+
+    SentInput(std::string key, std::chrono::steady_clock::time_point timestamp) {
+        this->key = key;
+        this->timestamp = timestamp;
+    }
+};
+
 class InputsInterruptionManager {
     private:
         // WHEN ADDING NEW TYPES, PLEASE INIT THEM IN THE CONSTRUCTOR, SO IT DOESN't CRASH (THEY ARE POINTERS)
@@ -183,6 +193,7 @@ class InputsInterruptionManager {
         std::vector<std::chrono::steady_clock::time_point>* lastInputTimestampsKeyboard;
         std::vector<std::chrono::steady_clock::time_point>* lastInputTimestampsMouse;
         std::vector<std::chrono::steady_clock::time_point>* lastInputTimestampsCombined;
+        std::vector<SentInput> pendingSentInputs;
         std::atomic<int> untilNextMacroRetry;
         std::unordered_map<int, bool> keyStates;
         std::condition_variable cv;
@@ -193,15 +204,15 @@ class InputsInterruptionManager {
         std::atomic<bool> modeEnabled = false;
 
         // requires restarting the app
-        bool shouldStartAnything = false;
-        bool shouldStartDelayModificationLoop = false;
-        bool shouldStartKeyboardHook = false;
-        bool shouldStartMouseHook = false;
+        std::atomic<bool> shouldStartAnything = false;
+        std::atomic<bool> shouldStartDelayModificationLoop = false;
+        std::atomic<bool> shouldStartKeyboardHook = false;
+        std::atomic<bool> shouldStartMouseHook = false;
 
-        int inputsListCapacity = 40;
-        int macroPauseAfterKeyboardInput = 8;
-        int macroPauseAfterMouseInput = 3;
-        // no pause after the combined one
+        std::atomic<int> inputsListCapacity = 40;
+        std::atomic<int> macroPauseAfterKeyboardInput = 8;
+        std::atomic<int> macroPauseAfterMouseInput = 3;
+        std::atomic<int> inputSeparationWaitingTimeoutMilliseconds = 1000;
 
         std::vector<std::chrono::steady_clock::time_point>* getLastTimestamps(InterruptionInputType type) {
             if (type == KEYBOARD) return lastInputTimestampsKeyboard;
@@ -218,72 +229,80 @@ class InputsInterruptionManager {
             else return nullptr;
         }
 
-        // simple getters
+        // getters and setters for integers
 
-        int getMacroPauseAfterKeyboardInput() {
+        std::atomic<int>& getMacroPauseAfterKeyboardInput() {
             return macroPauseAfterKeyboardInput;
         }
 
-        int getMacroPauseAfterMouseInput() {
+        void setMacroPauseAfterKeyboardInput(int macroPauseAfterKeyboardInput) {
+            this->macroPauseAfterKeyboardInput.store(macroPauseAfterKeyboardInput);
+        }
+
+        std::atomic<int>& getMacroPauseAfterMouseInput() {
             return macroPauseAfterMouseInput;
         }
 
-        int getInputsListCapacity() {
+        void setMacroPauseAfterMouseInput(int macroPauseAfterMouseInput) {
+            this->macroPauseAfterMouseInput.store(macroPauseAfterMouseInput);
+        }
+
+        std::atomic<int>& getInputsListCapacity() {
             return inputsListCapacity;
         }
 
-        // getters and setters for simple booleans
+        void setInputsListCapacity(int inputsListCapacity) {
+            this->inputsListCapacity.store(inputsListCapacity);
+        }
+
+        std::atomic<int>& getInputSeparationWaitingTimeout() {
+            return inputSeparationWaitingTimeoutMilliseconds;
+        }
+
+        void setInputSeparationWaitingTimeout(int inputSeparationWaitingTimeoutMilliseconds) {
+            this->inputSeparationWaitingTimeoutMilliseconds.store(inputSeparationWaitingTimeoutMilliseconds);
+        }
+
+        // getters and setters for booleans
 
         std::atomic<bool>& getModeEnabled() {
             return modeEnabled;
         }
 
         void setModeEnabled(bool modeEnabled) {
-            this->modeEnabled = modeEnabled;
+            this->modeEnabled.store(modeEnabled);
         }
 
-        bool getShouldStartAnything() {
+        std::atomic<bool>& getShouldStartAnything() {
             return shouldStartAnything;
         }
 
         void setShouldStartAnything(bool shouldStartAnything) {
-            this->shouldStartAnything = shouldStartAnything;
+            this->shouldStartAnything.store(shouldStartAnything);
         }
 
-        bool getShouldStartDelayModificationLoop() {
+        std::atomic<bool>& getShouldStartDelayModificationLoop() {
             return shouldStartDelayModificationLoop;
         }
 
         void setShouldStartDelayModificationLoop(bool shouldStartDelayModificationLoop) {
-            this->shouldStartDelayModificationLoop = shouldStartDelayModificationLoop;
+            this->shouldStartDelayModificationLoop.store(shouldStartDelayModificationLoop);
         }
 
-        bool getShouldStartKeyboardHook() {
+        std::atomic<bool>& getShouldStartKeyboardHook() {
             return shouldStartKeyboardHook;
         }
 
         void setShouldStartKeyboardHook(bool shouldStartKeyboardHook) {
-            this->shouldStartKeyboardHook = shouldStartKeyboardHook;
+            this->shouldStartKeyboardHook.store(shouldStartKeyboardHook);
         }
 
-        bool getShouldStartMouseHook() {
+        std::atomic<bool>& getShouldStartMouseHook() {
             return shouldStartMouseHook;
         }
 
         void setShouldStartMouseHook(bool shouldStartMouseHook) {
-            this->shouldStartMouseHook = shouldStartMouseHook;
-        }
-
-        void setMacroPauseAfterKeyboardInput(int macroPauseAfterKeyboardInput) {
-            this->macroPauseAfterKeyboardInput = macroPauseAfterKeyboardInput;
-        }
-
-        void setMacroPauseAfterMouseInput(int macroPauseAfterMouseInput) {
-            this->macroPauseAfterMouseInput = macroPauseAfterMouseInput;
-        }
-
-        void setInputsListCapacity(int inputsListCapacity) {
-            this->inputsListCapacity = inputsListCapacity;
+            this->shouldStartMouseHook.store(shouldStartMouseHook);
         }
 
         // important getters
@@ -369,7 +388,7 @@ class InputsInterruptionManager {
             std::vector<ManyInputsConfiguration>* confs = getConfigurations(type);
 
             lastInputTimestamps->push_back(std::chrono::steady_clock::now());
-            if (lastInputTimestamps->size() > 0 && lastInputTimestamps->size() > inputsListCapacity) {
+            if (lastInputTimestamps->size() > 0 && lastInputTimestamps->size() > inputsListCapacity.load()) {
                 lastInputTimestamps->erase(lastInputTimestamps->begin());
             }
 
@@ -399,5 +418,38 @@ class InputsInterruptionManager {
                 delete conf;
             }
             return list;
+        }
+
+        void addPendingSentInput(string key) {
+            SentInput input = SentInput(key, std::chrono::steady_clock::now());
+            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
+            pendingSentInputs.push_back(input);
+        }
+
+        bool checkIsInputPending(string key) {
+            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
+
+            bool result = false;
+            
+            auto now = std::chrono::steady_clock::now();
+            for (auto it = pendingSentInputs.begin(); it != pendingSentInputs.end();) {
+                auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->timestamp).count();
+
+                //cout << it->key << ' ' << timePassedSince << '\n';
+                if (timePassedSince >= inputSeparationWaitingTimeoutMilliseconds.load()) {
+                    it = pendingSentInputs.erase(it); // returns next
+                }
+                else {
+                    if (it->key == key) {
+                        result = true;
+                        it = pendingSentInputs.erase(it); // returns next
+                    }
+                    else {
+                        ++it;
+                    }
+                }
+            }
+
+            return result;
         }
 };
