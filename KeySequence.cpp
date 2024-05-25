@@ -120,7 +120,7 @@ public:
         return manyInputsDetectionAmount;
     }
 
-    int getInIntervalOfMilliseconds() const {
+    int getinTimeInterval_milliseconds() const {
         return manyInputsDetectionDuration;
     }
 
@@ -131,18 +131,18 @@ public:
     ManyInputsConfiguration(const YAML::Node &node) {
         if (node.IsMap()) {
             this->manyInputsDetectionAmount = getConfigInt(node, "atAmountOfInputs", 5);
-            this->manyInputsDetectionDuration = getConfigInt(node, "inIntervalOfMilliseconds", 5000);
-            this->macroPause = getConfigInt(node, "pauseMacroForSeconds", 15);
+            this->manyInputsDetectionDuration = getConfigInt(node, "inTimeInterval_milliseconds", 5000);
+            this->macroPause = getConfigInt(node, "pauseMacroFor_seconds", 15);
         }
         else {
             addConfigLoadingMessage("WARNING | A \"many inputs\" configuration instance couldn't be processed, using default values");
         }
     }
 
-    ManyInputsConfiguration(int atAmountOfInputs, int inIntervalOfMilliseconds, int pauseMacroForSeconds) {
+    ManyInputsConfiguration(int atAmountOfInputs, int manyInputsDetectionDuration, int macroPause) {
         this->manyInputsDetectionAmount = atAmountOfInputs;
-        this->manyInputsDetectionDuration = inIntervalOfMilliseconds;
-        this->macroPause = pauseMacroForSeconds;
+        this->manyInputsDetectionDuration = manyInputsDetectionDuration;
+        this->macroPause = macroPause;
     }
 
     bool fitsCurrentCase(std::vector<std::chrono::steady_clock::time_point>* inputsList, std::condition_variable& cv) {
@@ -153,12 +153,14 @@ public:
             auto timeBetweenLastInputs = std::chrono::duration_cast<std::chrono::milliseconds>(*(end - 1) - *(end - this->manyInputsDetectionAmount)).count();
 
             if (timeBetweenLastInputs <= this->manyInputsDetectionDuration) {
-                cout << "Fits a long case\n";
+                //cout << "Fits a long case\n";
                 return true;
             }
 
             /*cout << "Not Fits " << this->manyInputsDetectionAmount << ' ' << this->manyInputsDetectionDuration << ' ' << macroPause << '\n' << timeBetweenLastInputs << ' ' << this->manyInputsDetectionDuration << '\n';*/
         }
+
+        //cout << "Not fits\n";
 
         return false;
     }
@@ -166,8 +168,8 @@ public:
     YAML::Node* toNode() {
         YAML::Node* node = new YAML::Node();
         setConfigValue(*node, "atAmountOfInputs", this->manyInputsDetectionAmount);
-        setConfigValue(*node, "inIntervalOfMilliseconds", this->manyInputsDetectionDuration);
-        setConfigValue(*node, "pauseMacroForSeconds", this->macroPause);
+        setConfigValue(*node, "inTimeInterval_milliseconds", this->manyInputsDetectionDuration);
+        setConfigValue(*node, "pauseMacroFor_seconds", this->macroPause);
         return node;
     }
 };
@@ -186,6 +188,15 @@ class InputsInterruptionManager {
         std::condition_variable cv;
         std::mutex mtx;
         std::unique_lock<std::mutex>* lock;
+        std::mutex threadSafetyMutex;
+
+        std::atomic<bool> modeEnabled = false;
+
+        // requires restarting the app
+        bool shouldStartAnything = false;
+        bool shouldStartDelayModificationLoop = false;
+        bool shouldStartKeyboardHook = false;
+        bool shouldStartMouseHook = false;
 
         int inputsListCapacity = 40;
         int macroPauseAfterKeyboardInput = 8;
@@ -207,6 +218,8 @@ class InputsInterruptionManager {
             else return nullptr;
         }
 
+        // simple getters
+
         int getMacroPauseAfterKeyboardInput() {
             return macroPauseAfterKeyboardInput;
         }
@@ -217,6 +230,48 @@ class InputsInterruptionManager {
 
         int getInputsListCapacity() {
             return inputsListCapacity;
+        }
+
+        // getters and setters for simple booleans
+
+        std::atomic<bool>& getModeEnabled() {
+            return modeEnabled;
+        }
+
+        void setModeEnabled(bool modeEnabled) {
+            this->modeEnabled = modeEnabled;
+        }
+
+        bool getShouldStartAnything() {
+            return shouldStartAnything;
+        }
+
+        void setShouldStartAnything(bool shouldStartAnything) {
+            this->shouldStartAnything = shouldStartAnything;
+        }
+
+        bool getShouldStartDelayModificationLoop() {
+            return shouldStartDelayModificationLoop;
+        }
+
+        void setShouldStartDelayModificationLoop(bool shouldStartDelayModificationLoop) {
+            this->shouldStartDelayModificationLoop = shouldStartDelayModificationLoop;
+        }
+
+        bool getShouldStartKeyboardHook() {
+            return shouldStartKeyboardHook;
+        }
+
+        void setShouldStartKeyboardHook(bool shouldStartKeyboardHook) {
+            this->shouldStartKeyboardHook = shouldStartKeyboardHook;
+        }
+
+        bool getShouldStartMouseHook() {
+            return shouldStartMouseHook;
+        }
+
+        void setShouldStartMouseHook(bool shouldStartMouseHook) {
+            this->shouldStartMouseHook = shouldStartMouseHook;
         }
 
         void setMacroPauseAfterKeyboardInput(int macroPauseAfterKeyboardInput) {
@@ -230,6 +285,8 @@ class InputsInterruptionManager {
         void setInputsListCapacity(int inputsListCapacity) {
             this->inputsListCapacity = inputsListCapacity;
         }
+
+        // important getters
 
         std::condition_variable& getConditionVariable() {
             return cv;
@@ -246,6 +303,8 @@ class InputsInterruptionManager {
         std::unordered_map<int, bool>& getKeyStates() {
             return keyStates;
         }
+
+        // main part
 
         InputsInterruptionManager() {
             untilNextMacroRetry.store(0);
@@ -269,6 +328,8 @@ class InputsInterruptionManager {
         }
 
         void initType(const YAML::Node& node, InterruptionInputType type) {
+            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
+
             //cout << "Init " << inputTypeToString(type) << endl;
 
             if (node.IsSequence()) {
@@ -288,6 +349,7 @@ class InputsInterruptionManager {
         }
 
         void setNewDelay(int delay) {
+            // looks thread safe enough already
             if (untilNextMacroRetry.load() < delay) untilNextMacroRetry.store(delay);
         }
 
@@ -301,6 +363,8 @@ class InputsInterruptionManager {
         }*/
         
         void checkForManyInputsOnNew(InterruptionInputType type) {
+            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
+
             std::vector<std::chrono::steady_clock::time_point>* lastInputTimestamps = getLastTimestamps(type);
             std::vector<ManyInputsConfiguration>* confs = getConfigurations(type);
 

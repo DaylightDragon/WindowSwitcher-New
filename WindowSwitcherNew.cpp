@@ -16,26 +16,34 @@
 #include <conio.h> // ig for _getch
 #include <dwmapi.h>
 #include <condition_variable>
-//#include <stdexcept>
+#include <csignal>
 
 #pragma comment(lib, "Dwmapi.lib")
 
+// Pre-defining all classes and methods
 class WindowGroup;
-
 void deleteWindowGroup(WindowGroup* wg);
 
+// Windows, sequences and managers
 map<HWND, WindowGroup*> referenceToGroup;
 map<WindowGroup*, KeySequence*> groupToKey;
 WindowGroup* lastGroup;
-bool hideNotMainWindows = false;
+KeySequence* mainSequence;
+map<string, KeySequence*> knownOtherSequences = map<string, KeySequence*>();
 std::vector<std::string> failedHotkeys;
-int currentHangWindows = 0;
+InputsInterruptionManager* interruptionManager;
 
+vector<HWND> autoGroup1;
+vector<HWND> autoGroup2;
+vector<HWND> autoGroup3;
+vector<HWND> autoGroup4;
+vector<HWND> autoGroupAllWindows;
+
+// Permanent settings
 string currentConfigVersion = "2.2";
 wstring rx_name = L"Roblox";
-//wstring vmware_name_part = L"VMware Workstation"; // I needed that
-//wstring mc_name_part = L"Minecraft"; // And this too lmao
 
+// Main misc settings variables
 string defaultMacroKey = "e";
 int macroDelayInitial;
 int macroDelayBeforeSwitching;
@@ -45,40 +53,34 @@ int macroDelayAfterKeyPress;
 int macroDelayAfterKeyRelease;
 bool specialSingleWindowModeEnabled;
 string specialSingleWindowModeKeyCode;
-
 vector<string> defaultFastForegroundWindows;
 
-thread* curInputThr;
-boolean stopInput = true;
-KeySequence* mainSequence;
-map<string, KeySequence*> knownOtherSequences = map<string, KeySequence*>();
-
+// Input randomness
 int sleepRandomnessPersent = 10;
 int sleepRandomnessMaxDiff = 40;
 
-// Usual macro pause delays (in seconds)
+// Runtime/status variables
+bool stopMacroInput = true;
+bool initialConfigLoading = true;
+bool hideNotMainWindows = false;
+int currentHangWindows = 0;
+wstring customReturnToFgName = L"";
+int restoredCustomWindowsAmount = 0;
 
-//int macroPauseAfterKeyboardKeyHeldDown = 20;
-//int macroPauseAfterWindowChange = 7;
+// Permanent config variables
+int oldConfigValue_startAnything;
+int oldConfigValue_startKeyboardHook;
+int oldConfigValue_startMouseHook;
 
-//int macroPauseAfterKeyboardInput = 8;
-
-//int manyKeyboardInputsDetectionAmount = 5;
-//int manyKeyboardInputsDetectionDuration = 5000; // in milliseconds
-//int macroPauseAfterManyKeyboardInputs = 14;
-
-//int macroPauseAfterMouseInput = 3;
-
-//int manyMouseInputsDetectionAmount = 5;
-//int manyMouseInputsDetectionDuration = 5000; // in milliseconds
-//int macroPauseAfterManyMouseInputs = 8;
-
-InputsInterruptionManager* interruptionManager;
-
-// therad related
+// Therad related
 HHOOK keyboardHook;
 HHOOK mouseHook;
+std::thread* currentMacroLoopThread;
+std::thread* macroDelayWatcherThread;
+std::thread* keyboardHookThread;
+std::thread* mouseHookThread;
 
+bool debugMode = IsDebuggerPresent();;
 //string mainConfigName = "WsSettings/settings.yml";
 
 bool checkHungWindow(HWND hwnd) {
@@ -528,6 +530,8 @@ void checkClosedWindows() {
     if (br) checkClosedWindows();
 }
 
+// Фурри это классно
+
 static BOOL CALLBACK enumWindowCallback(HWND hwnd, LPARAM lparam) {
     //int length = GetWindowTextLength(hwnd); // WindowName
     //wchar_t* buffer = new wchar_t[length + 1];
@@ -607,13 +611,13 @@ void keyRelease(string key) {
 
 void pressAKey(HWND w, Key k) {
     if (!k.enabled || k.keyCode == "EXAMPLE") return;
-    if (stopInput) return;
+    if (stopMacroInput) return;
     customSleep(k.beforeKeyPress);
-    if (stopInput) return;
+    if (stopMacroInput) return;
     keyPress(mapOfKeys[k.keyCode]);
     customSleep(k.holdFor);
     keyRelease(mapOfKeys[k.keyCode]);
-    if (stopInput) return;
+    if (stopMacroInput) return;
     customSleep(k.afterKeyPress);
 }
 
@@ -622,7 +626,7 @@ void performASequence(HWND w) {
         vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
         if (keys.size() > 0) {
             for (auto& el : keys) {
-                if (stopInput) return;
+                if (stopMacroInput) return;
                 pressAKey(w, el);
             }
         }
@@ -633,7 +637,7 @@ void performASequence(HWND w) {
     }
     else {
         for (auto& el : mainSequence->getKeys()) {
-            if (stopInput) return;
+            if (stopMacroInput) return;
             pressAKey(w, el);
         }
     }
@@ -660,7 +664,7 @@ void focusAndSendSequence(HWND hwnd) { // find this
 void performInputsEverywhere()
 {
     for (auto& it : referenceToGroup) {
-        if (stopInput) return;
+        if (stopMacroInput) return;
         //cout << it.first << endl;
         focusAndSendSequence(it.first);
         customSleep(macroDelayBeforeSwitching);
@@ -669,7 +673,7 @@ void performInputsEverywhere()
 
 void startUsualMacroLoop() {
     customSleep(macroDelayInitial);
-    while (!stopInput) {
+    while (!stopMacroInput) {
         //for (int i = 0x5; i <= 0x30; i++) { // 5A
             //if (stopInput) return;
             //cout << std::hex << key << endl;
@@ -686,7 +690,7 @@ void startUsualMacroLoop() {
 }
 
 void startUsualSequnceMode() {
-    curInputThr = new thread(startUsualMacroLoop);
+    currentMacroLoopThread = new thread(startUsualMacroLoop);
 }
 
 void performSingleWindowedHold() {
@@ -704,7 +708,7 @@ void performSingleWindowedHold() {
     //performASequence(w);
 }
 
-void unHoldDownE() {
+void releaseConfiguredKey() {
     HWND w = GetForegroundWindow();
     SetForegroundWindow(w);
     customSleep(macroDelayBetweenSwitchingAndFocus);
@@ -718,12 +722,12 @@ void unHoldDownE() {
     keyRelease(key);
 }
 
-void EMacro() {
+void toggleMacroState() {
     if (referenceToGroup.size() == 0) {
         cout << "You haven't linked any windows yet!" << endl;
     }
-    else if (stopInput) {
-        stopInput = false;
+    else if (stopMacroInput) {
+        stopMacroInput = false;
         cout << "Starting...\n";
         if (specialSingleWindowModeEnabled && referenceToGroup.size() == 1) {
             performSingleWindowedHold();
@@ -733,17 +737,11 @@ void EMacro() {
         }
     }
     else {
-        stopInput = true;
-        if (referenceToGroup.size() == 1) unHoldDownE();
+        stopMacroInput = true;
+        if (referenceToGroup.size() == 1) releaseConfiguredKey();
         cout << "Stopped\n";
     }
 }
-
-vector<HWND> autoGroup1;
-vector<HWND> autoGroup2;
-vector<HWND> autoGroup3;
-vector<HWND> autoGroup4;
-vector<HWND> autoGroupAllWindows;
 
 void addWindowNoMatterWhat(HWND hwnd) {
     if (checkHungWindow(hwnd)) return;
@@ -869,7 +867,7 @@ int createConnectedGroupsForCompletelyAll() {
     return amount;
 }
 
-void connectAllRxs() {
+void connectAllQuarters() {
     cout << "Connecting RBX windows..." << endl;
     autoGroup1.clear(); autoGroup2.clear(); autoGroup3.clear(); autoGroup4.clear();
     currentHangWindows = 0;
@@ -912,8 +910,6 @@ void performShowOrHideAllNotMain() {
     }
 }
 
-//vector<HWND> rxWindowsForAdjusting; // delete closed pls
-
 void windowPosTest(HWND hwnd, int type) {
     RECT p;
     GetWindowRect(hwnd, &p);
@@ -954,11 +950,8 @@ void hideForgr() {
     //get back from vector somehow, maybe input
 }
 
-wstring customFgName = L"";
-int restoredCustomWindowsAmount = 0;
-
 static BOOL CALLBACK fgCustonWindowCallback(HWND hwnd, LPARAM lparam) {
-    if (customFgName == L"") return TRUE;
+    if (customReturnToFgName == L"") return TRUE;
 
     //int length = GetWindowTextLength(hwnd); // WindowName
     //wchar_t* buffer = new wchar_t[length + 1];
@@ -967,7 +960,7 @@ static BOOL CALLBACK fgCustonWindowCallback(HWND hwnd, LPARAM lparam) {
 
     wstring ws = getWindowName(hwnd);
 
-    if (ws == customFgName || (ws.find(customFgName) != wstring::npos)) {
+    if (ws == customReturnToFgName || (ws.find(customReturnToFgName) != wstring::npos)) {
         if (!checkHungWindow(hwnd)) {
             if (!ShowWindow(hwnd, SW_SHOW)) cout << GetLastError() << endl;
             if (!IsWindowVisible(hwnd)) {
@@ -982,7 +975,6 @@ static BOOL CALLBACK fgCustonWindowCallback(HWND hwnd, LPARAM lparam) {
 
     return TRUE;
 }
-#include <regex>
 
 void getFromBackgroundSpecific() {
     HWND itself = GetConsoleWindow();
@@ -1009,7 +1001,7 @@ void getFromBackgroundSpecific() {
 
     //wcout << "\"" << checkEmpty << "\"\n";
     if (checkEmpty != L"") {
-        customFgName = targetName;
+        customReturnToFgName = targetName;
     }
     //else if (customFgName != L"") cout << "Using the previous window name\n";
     //else {
@@ -1084,32 +1076,64 @@ void resetInterruptionManager(const YAML::Node& config) {
         delete interruptionManager;
         interruptionManager = nullptr;
     }
+    //cout << "resetInterruptionManager\n";
+}
+
+void rememberInitialPermanentSettings() {
+    oldConfigValue_startAnything = interruptionManager->getShouldStartAnything();
+    oldConfigValue_startKeyboardHook = interruptionManager->getShouldStartKeyboardHook();
+    oldConfigValue_startMouseHook = interruptionManager->getShouldStartMouseHook();
+}
+
+void readSimpleInteruptionManagerSettings(const YAML::Node& config) {
+    interruptionManager->setMacroPauseAfterKeyboardInput(getConfigInt(config, "settings/macro/interruptions/keyboard/startWithDelay_seconds", 8));
+    interruptionManager->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startWithDelay_seconds", 3));
+    interruptionManager->setInputsListCapacity(getConfigInt(config, "settings/macro/interruptions/rememberMaximumInputsEach", 40));
+    interruptionManager->setModeEnabled(getConfigBool(config, "settings/macro/interruptions/interruptionsWorkingRightNow", false));
+    
+    interruptionManager->setShouldStartAnything(getConfigBool(config, "settings/requiresApplicationRestart/macroInterruptions/enableTheseOptions", false));
+    interruptionManager->setShouldStartKeyboardHook(getConfigBool(config, "settings/requiresApplicationRestart/macroInterruptions/keyboardListener", true));
+    if (!interruptionManager->getShouldStartAnything()) interruptionManager->setShouldStartKeyboardHook(false);
+    interruptionManager->setShouldStartMouseHook(getConfigBool(config, "settings/requiresApplicationRestart/macroInterruptions/mouseListener", true));
+    if (!interruptionManager->getShouldStartAnything()) interruptionManager->setShouldStartMouseHook(false);
+    interruptionManager->setShouldStartDelayModificationLoop(interruptionManager->getShouldStartKeyboardHook() || interruptionManager->getShouldStartMouseHook());
+    if (!interruptionManager->getShouldStartAnything()) interruptionManager->setShouldStartDelayModificationLoop(false);
+
+    if (!initialConfigLoading && (
+        oldConfigValue_startKeyboardHook != interruptionManager->getShouldStartKeyboardHook() ||
+        oldConfigValue_startMouseHook != interruptionManager->getShouldStartMouseHook())) {
+        addConfigLoadingMessage("WARNING | Some config values can't be applied in runtime, you need to restart the application for that");
+    }
 }
 
 void readNewInterruptionManager(const YAML::Node& config) {
     resetInterruptionManager(config);
     interruptionManager = new InputsInterruptionManager();
-
-    interruptionManager->setMacroPauseAfterKeyboardInput(getConfigInt(config, "settings/macro/interruptions/keyboard/startAtSeconds", 8));
-    interruptionManager->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startAtSeconds", 3));
-    interruptionManager->setInputsListCapacity(getConfigInt(config, "settings/macro/interruptions/rememberMaximumInputs", 40));
+    //cout << "readNewInterruptionManager\n";
 
     interruptionManager->initType(getConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases"), KEYBOARD);
     interruptionManager->initType(getConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases"), MOUSE);
     interruptionManager->initType(getConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases"), ANY_INPUT);
+
+    readSimpleInteruptionManagerSettings(config);
+
+    //cout << interruptionManager << '\n';
+    //if (macroDelayWatcherThread != nullptr) {
+        //macroDelayWatcherThread->
+    //}
+    //std::thread(testWait).detach();
 }
 
 void readDefaultInterruptionManager(const YAML::Node& config) {
     resetInterruptionManager(config);
     interruptionManager = new InputsInterruptionManager();
-
-    interruptionManager->setMacroPauseAfterKeyboardInput(getConfigInt(config, "settings/macro/interruptions/keyboard/startAtSeconds", 8));
-    interruptionManager->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startAtSeconds", 3));
-    interruptionManager->setInputsListCapacity(getConfigInt(config, "settings/macro/interruptions/rememberMaximumInputs", 40));
+    //cout << "readDefaultInterruptionManager\n";
 
     interruptionManager->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(KEYBOARD), KEYBOARD);
     interruptionManager->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(MOUSE), MOUSE);
     interruptionManager->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(ANY_INPUT), ANY_INPUT);
+
+    readSimpleInteruptionManagerSettings(config);
 }
 
 void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig) {
@@ -1243,6 +1267,7 @@ bool loadConfig(string programPath) {
             bool nothingMouse = interruptionManager->getConfigurations(MOUSE)->size() == 0;
             // if there is nothing
             if (nothingKeyboard || nothingMouse) {
+                //cout << "Nothing\n";
                 // set default values
                 YAML::Node* defaultList = interruptionManager->getDefaultInterruptionConfigsList(KEYBOARD);
                 if(nothingKeyboard) setConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases", *defaultList);
@@ -1270,10 +1295,12 @@ bool loadConfig(string programPath) {
         localDefaultFastForegroundWindows.push_back("VMware Workstation");
         defaultFastForegroundWindows = getConfigVectorString(config, "settings/fastReturnToForegroundWindows", localDefaultFastForegroundWindows);
 
+        // saving
         setConfigValue(config, "internal/configVersion", currentConfigVersion);
         if (!wrongConfig) saveYaml(config, getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName);
         //if (!wrongConfig) saveYaml(config, getProgramFolderPath(programPath) + "/" + folderPath + "/" + "test_" + fileName); // test
-
+        
+        initialConfigLoading = false;
         return true;
     }
     catch (const YAML::Exception& e) {
@@ -1288,23 +1315,19 @@ bool loadConfig(string programPath) {
 }
 
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
-    if (interruptionManager != nullptr) {
+    if (interruptionManager != nullptr && interruptionManager->getModeEnabled()) { // interruptionManager->getModeEnabled().load()
         if (nCode >= 0) {
             //cout << interruptionManager->getConfigurations(KEYBOARD)->size() << '\n';
             //cout << interruptionManager->getConfigurations(MOUSE)->size() << '\n';
 
             int key = reinterpret_cast<LPKBDLLHOOKSTRUCT>(lParam)->vkCode;
             if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
-                // Key is pressed down
-                interruptionManager->getKeyStates()[key] = true;
-                // Handle key press event
+                //interruptionManager->getKeyStates()[key] = true;
                 //setNewDelay(macroPauseAfterKeyboardKeyHeldDown);
             }
             else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
-                // Key is released
-                interruptionManager->getKeyStates()[key] = false;
+                //interruptionManager->getKeyStates()[key] = false;
                 interruptionManager->setNewDelay(interruptionManager->getMacroPauseAfterKeyboardInput());
-                // Handle key release event
                 //if (untilNextMacroRetry.load() <= macroPauseAfterKeyboardKeyHeldDown) untilNextMacroRetry.store(macroPauseAfterKeyboardInput);
             }
 
@@ -1332,7 +1355,7 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 }
 
 LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
-    if (interruptionManager != nullptr) {
+    if (interruptionManager != nullptr && interruptionManager->getModeEnabled()) {
         if (nCode >= 0) {
             switch (wParam) {
             case WM_LBUTTONDOWN:
@@ -1364,15 +1387,54 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
-void testWait() {
-    while (true) {
-        if (interruptionManager == nullptr) continue;
-        int curValue = interruptionManager->getUntilNextMacroRetryAtomic().load();
-        std::cout << curValue << std::endl;
+void keyboardHookFunc() {
+    if (!debugMode) {
+        keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, NULL, 0);
+        if (keyboardHook == NULL) std::cout << "Failed to register the keyboard hook for macro pauses" << std::endl;
 
-        curValue -= 1;
-        if (curValue < 0) curValue = 0;
-        interruptionManager->getUntilNextMacroRetryAtomic().store(curValue);
+        MSG msg;
+        while (GetMessage(&msg, NULL, 0, 0)) {
+            //TranslateMessage(&msg);
+            //DispatchMessage(&msg);
+        }
+
+        if (keyboardHook) UnhookWindowsHookEx(keyboardHook);
+    }
+    else {
+        std::cout << "Not registering the keyboard hook due to debug mode\n";
+    }
+}
+
+void MouseHookFunc() {
+    if (!debugMode) {
+        mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, NULL, 0);
+        if (mouseHook == NULL) std::cout << "Failed to register the mouse hook for macro pauses" << std::endl;
+
+        MSG msg;
+        while (GetMessage(&msg, NULL, 0, 0)) {
+            //TranslateMessage(&msg);
+            //DispatchMessage(&msg);
+        }
+
+        if (mouseHook) UnhookWindowsHookEx(mouseHook);
+    }
+    else {
+        std::cout << "Not registering the mouse hook due to debug mode\n";
+    }
+}
+
+void macroDelayModificationLoop() {
+    while (true) {
+        // important!
+        //std::cout << "";
+        if (interruptionManager != nullptr && interruptionManager->getModeEnabled()) {
+            int curValue = interruptionManager->getUntilNextMacroRetryAtomic().load();
+            cout << curValue << endl;
+
+            curValue -= 1;
+            if (curValue < 0) curValue = 0;
+            interruptionManager->getUntilNextMacroRetryAtomic().store(curValue);
+        }
         Sleep(1000);
     }
     //std::cout << "Waining...\n";
@@ -1380,25 +1442,100 @@ void testWait() {
     //std::cout << "Done waiting\n";
 }
 
-int main(int argc, char* argv[]) {
-    setlocale(0, "");
+void terminationOnFailure() {
+    HWND hwnd = GetConsoleWindow();
+    if (hwnd) {
+        if (IsIconic(hwnd)) {
+            ShowWindow(hwnd, SW_RESTORE);
+        }
+    }
 
-    // Listening iputs for macro interuptions
-    std::thread(testWait).detach();
-    keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, NULL, 0);
-    if (keyboardHook == NULL) std::cout << "Failed to register the keyboard hook for macro pauses" << std::endl;
-    mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, NULL, 0);
-    if (mouseHook == NULL) std::cout << "Failed to register the mouse hook for macro pauses" << std::endl;
+    cout << "[!!!] The application encountered an error that it doesn't want to ingnore, so it has exited." << endl;
+    _getch();
+    ExitProcess(1);
+}
+
+void signalHandler(int signum) {
+    if (signum == SIGFPE) {
+        std::cerr << "Caught signal: SIGFPE (Arithmetic exception)" << std::endl;
+        std::cerr << "Arithmetic exception occurred." << std::endl;
+    }
+    else if (signum == SIGSEGV) {
+        std::cerr << "Caught signal: SIGSEGV (Segmentation fault)" << std::endl;
+        std::cerr << "Segmentation fault / access violation occurred." << std::endl;
+    }
+    else {
+        std::cerr << "Caught signal: " << signum << std::endl;
+    }
+    terminationOnFailure();
+}
+
+LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exceptionInfo) {
+    // Get the exception record from ExceptionInfo
+    auto pExceptionRecord = exceptionInfo->ExceptionRecord;
+
+    // Print out the exception type (exception code)
+    std::cerr << "Unhandled exception caught. Exception type: 0x" << std::hex << pExceptionRecord->ExceptionCode << std::endl;
+
+    // Print out the exception message (exception information)
+    char exceptionMessage[1024];
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, pExceptionRecord->ExceptionCode,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), exceptionMessage, 1024, NULL);
+
+    std::cerr << "Exception message: " << exceptionMessage << std::endl;
+
+    terminationOnFailure();
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+int actualMain(int argc, char* argv[]) {
+    // Setting error handlers for non-debug configuration
+    //if (!debugMode) {
+    signal(SIGSEGV, signalHandler);
+    signal(SIGFPE, signalHandler);
+    SetUnhandledExceptionFilter(&UnhandledExceptionHandler);
+    //}
+
+    //throw exception("aaa");
+
+    /*int a = 0;
+    int b = 0;
+    cout << a / b;*/
+
+    setlocale(0, "");
 
     initializeRandom();
     loadConfig(argv[0]);
+    rememberInitialPermanentSettings();
     registerHotkeys();
     printConfigLoadingMessages();
+
+    // Listening for inputs for macro interuptions
+    if (interruptionManager->getShouldStartDelayModificationLoop()) {
+        macroDelayWatcherThread = new std::thread(macroDelayModificationLoop);
+        macroDelayWatcherThread->detach();
+    }
+    if (interruptionManager->getShouldStartKeyboardHook()) {
+        keyboardHookThread = new std::thread(keyboardHookFunc);
+        keyboardHookThread->detach();
+        //cout << "Priority " << GetThreadPriority(keyboardHook) << endl;
+        //SetThreadPriority(keyboardHook, THREAD_PRIORITY_HIGHEST);
+    }
+    if (interruptionManager->getShouldStartMouseHook()) {
+        mouseHookThread = new std::thread(MouseHookFunc);
+        mouseHookThread->detach();
+    }
+
+    if (debugMode) cout << "[! DEBUG MODE !]\n\n";
+
     //UINT VKCode = LOBYTE(VkKeyScan('e'));
     //UINT ScanCode = MapVirtualKey(VKCode, 0);
     //cout << ScanCode << endl; // VkKeyScan('e') // wscanf_s(L"a")
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0) != 0) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+
         if (msg.message == WM_HOTKEY) {
             checkClosedWindows();
             HWND curHwnd = GetForegroundWindow();
@@ -1423,7 +1560,7 @@ int main(int argc, char* argv[]) {
                 showAllRx();
             }
             else if (msg.wParam == 14) {
-                connectAllRxs();
+                connectAllQuarters();
             }
             else if (msg.wParam == 15) {
                 referenceToGroup.clear();
@@ -1439,7 +1576,7 @@ int main(int argc, char* argv[]) {
                 //windowPosTest(curHwnd, 1);
             }
             else if (msg.wParam == 17) {
-                EMacro();
+                toggleMacroState();
             }
             else if (msg.wParam == 24) {
                 hideForgr();
@@ -1513,5 +1650,36 @@ int main(int argc, char* argv[]) {
             hungWindowsAnnouncement();
         }
     }
+
     return 0;
+}
+
+int main(int argc, char* argv[]) {
+    if (debugMode || true) {
+        actualMain(argc, argv);
+    }
+    else {
+        try {
+            actualMain(argc, argv);
+        }
+        catch (const YAML::Exception& e) {
+            std::cerr << "ERROR | A YAML::Exception caught: " << typeid(e).name() << std::endl;
+            std::cerr << "ERROR | It's message: " << e.what() << std::endl;
+            terminationOnFailure();
+        }
+        catch (const std::exception& e) {
+            std::cerr << "ERROR | An std::exception caught: " << typeid(e).name() << std::endl;
+            std::cerr << "ERROR | It's message: " << e.what() << std::endl;
+            terminationOnFailure();
+        }
+        catch (const std::runtime_error& e) {
+            std::cerr << "ERROR | An std::runtime_error caught: " << typeid(e).name() << std::endl;
+            std::cerr << "ERROR | It's message: " << e.what() << std::endl;
+            terminationOnFailure();
+        }
+        catch (...) {
+            std::cerr << "ERROR | Unknown exception caught, can't provide any more information" << std::endl;
+            terminationOnFailure();
+        }
+    }
 }

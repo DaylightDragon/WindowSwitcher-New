@@ -16,6 +16,7 @@ using namespace std;
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <experimental/filesystem>
 
+string configLoadingMessages = "";
 namespace fs = std::experimental::filesystem;
 
 #ifdef _WIN32
@@ -52,8 +53,6 @@ bool createDirectories(const std::string& path) {
     return false;
 }
 
-string configLoadingMessages = "";
-
 void addConfigLoadingMessage(string message) {
     if (!configLoadingMessages.empty()) configLoadingMessages += "\n";
     configLoadingMessages += message;
@@ -61,7 +60,7 @@ void addConfigLoadingMessage(string message) {
 
 void printConfigLoadingMessages() {
     if (!configLoadingMessages.empty()) {
-        cout << "Loading config warnings and errors:" << endl << configLoadingMessages << endl << endl;
+        cout << "Loading config messages:" << endl << configLoadingMessages << endl << endl;
         configLoadingMessages = "";
     }
 }
