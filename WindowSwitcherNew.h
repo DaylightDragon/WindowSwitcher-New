@@ -5,4 +5,4 @@
 #include <string>
 
 std::map<std::string, int> getMapOfKeys();
-//void setNewDelay(int delay);
+std::atomic<bool>& getStopMacroInput();

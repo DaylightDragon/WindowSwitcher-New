@@ -385,7 +385,9 @@ class InputsInterruptionManager {
             if (untilNextMacroRetry.load() < delay) {
                 untilNextMacroRetry.store(delay);
                 if (informOnEvents.load()) {
-                    cout << "Paused for " << delay << " seconds...\n";
+                    if (!getStopMacroInput().load()) {
+                        cout << "Paused for " << delay << " seconds...\n";
+                    }
                 }
             }
         }
@@ -452,9 +454,10 @@ class InputsInterruptionManager {
             auto now = std::chrono::steady_clock::now();
             for (auto it = pendingSentInputs.begin(); it != pendingSentInputs.end();) {
                 auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->timestamp).count();
+                int threshold = inputSeparationWaitingTimeoutMilliseconds.load();
 
                 //cout << it->key << ' ' << timePassedSince << '\n';
-                if (timePassedSince >= inputSeparationWaitingTimeoutMilliseconds.load()) {
+                if (threshold >= 0 && timePassedSince >= threshold) {
                     it = pendingSentInputs.erase(it); // returns next
                 }
                 else {

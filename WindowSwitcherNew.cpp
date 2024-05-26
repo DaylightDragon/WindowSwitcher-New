@@ -1,12 +1,13 @@
 ﻿#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 
-#include <iostream>
 #include <yaml-cpp/yaml.h>
 #include "ConfigOperations.h"
 #include "GeneralUtils.h"
 #include "KeySequence.h"
+#include "CustomHotkeys.h"
 
 #include <windows.h>
+#include <iostream>
 #include <stdio.h>
 #include <map>
 #include <vector>
@@ -42,6 +43,7 @@ vector<HWND> autoGroupAllWindows;
 // Permanent settings
 string currentConfigVersion = "2.2";
 wstring rx_name = L"Roblox";
+string programPath;
 
 // Main misc settings variables
 string defaultMacroKey = "e";
@@ -60,7 +62,7 @@ int sleepRandomnessPersent = 10;
 int sleepRandomnessMaxDiff = 40;
 
 // Runtime/status variables
-bool stopMacroInput = true;
+std::atomic<bool> stopMacroInput = true;
 bool initialConfigLoading = true;
 bool hideNotMainWindows = false;
 int currentHangWindows = 0;
@@ -86,6 +88,10 @@ std::unique_lock<std::mutex> macroWaitLock = std::unique_lock<std::mutex>(macroW
 
 bool debugMode = IsDebuggerPresent();;
 //string mainConfigName = "WsSettings/settings.yml";
+
+bool getDebugMode() {
+    return debugMode;
+}
 
 bool checkHungWindow(HWND hwnd) {
     if (IsHungAppWindow(hwnd)) {
@@ -237,37 +243,42 @@ void registerHotkeys() {
     failedHotkeys.clear();
     int totalHotkeys = 28;
 
-    registerSingleHotkey(1, MOD_ALT | MOD_NOREPEAT, 0xBC, "Alt + ,", "Add window to current group");
-    registerSingleHotkey(2, MOD_ALT | MOD_NOREPEAT, 0xBE, "Alt + .", "Prepare for the next group");
-    registerSingleHotkey(11, MOD_ALT | MOD_NOREPEAT, 0x49, "Alt + I'", "Edit the window's group");
-    registerSingleHotkey(3, MOD_ALT | MOD_NOREPEAT, 0x4B, "Alt + K'", "Shift windows to the left");
-    registerSingleHotkey(4, MOD_ALT | MOD_NOREPEAT, 0x4C, "Alt + L'", "Shift windows to the right");
-    registerSingleHotkey(5, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4B, "Ctrl + Alt + K'", "Shift ALL windows to the left");
-    registerSingleHotkey(6, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4C, "Ctrl + Alt + L'", "Shift ALL windows to the right");
-    registerSingleHotkey(26, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4B, "Ctrl + Shift + K", "Shift ALL OTHER groups to the left");
-    registerSingleHotkey(27, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4C, "Ctrl + Shift + L", "Shift ALL OTHER groups to the right");
-    registerSingleHotkey(7, MOD_ALT | MOD_NOREPEAT, 0xDD, "Alt + ]", "Remove current window from it's group (Critical Bug)");
-    registerSingleHotkey(8, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0xDD, "Ctrl + Alt + ]", "Delete the entire group current window is in");
-    registerSingleHotkey(15, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0xDB, "Ctrl + Shift + [", "Delete all groups");
-    registerSingleHotkey(9, MOD_ALT | MOD_NOREPEAT, 0x51, "Alt + Q", "Toggle visibility of the opposite windows in this group (NOT SOON WIP)");
-    registerSingleHotkey(13, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x51, "Ctrl + Alt + Q", "Toggle visibility of all not main windows (May not work properly yet with Auto-key macro)");
-    // ctrl shift a do current alt a, but that one should leave window updating in background
-    registerSingleHotkey(10, MOD_ALT | MOD_NOREPEAT, 0x41, "Alt + A", "Toggle visibility of every last window in all the pairs and minimize the linked ones");
-    registerSingleHotkey(18, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x44, "(WIP) Ctrl + Shift + D", "Set the window as main in current group");
-    registerSingleHotkey(19, MOD_ALT | MOD_NOREPEAT, 0x44, "Alt + D", "(WIP) Swap to main window in current group");
-    registerSingleHotkey(23, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x44, "Ctrl + Alt + D", "(WIP) Swap to main window in all groups");
-    registerSingleHotkey(12, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x55, "Ctrl + Alt + U", "Get all RBX and VMWW windows back from background");
-    registerSingleHotkey(24, MOD_CONTROL | MOD_NOREPEAT, 0x55, "Ctrl + U", "Put current foregrounded window to background");
-    registerSingleHotkey(25, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x55, "Ctrl + Shift + U", "Get specific windows from background by their name");
-    registerSingleHotkey(16, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x56, "Ctrl + Shift + V", "(WIP, NOT SOON) Start/Stop adjusting new RBX windows to screen quarters");
-    registerSingleHotkey(14, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x56, "Ctrl + Alt + V", "Connect all RBX windows to 4 quarter groups");
-    registerSingleHotkey(30, MOD_ALT | MOD_NOREPEAT, 0x56, "Alt + V", "Connect absolutely all RBX windows into one single group");
-    registerSingleHotkey(28, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x41, "Ctrl + Shift + A", "Bring all connected windows to foreground");
-    registerSingleHotkey(17, MOD_ALT | MOD_NOREPEAT, 0x47, "Alt + G", "Start/stop the automatical sequence macro for Roblox windows");
-    registerSingleHotkey(29, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x47, "Ctrl + Alt + G", "Set the macro key (or sequence) for this group");
-    registerSingleHotkey(31, MOD_ALT | MOD_NOREPEAT, 0x48, "Alt + H", "Reload all configs");
-    registerSingleHotkey(20, MOD_ALT | MOD_NOREPEAT, 0x50, "Alt + P", "Show the debug list of the linked windows", true);
-    registerSingleHotkey(21, MOD_ALT | MOD_NOREPEAT, 0xDC, "Alt + \\", "Test", true);
+    vector<KeybindInfo>* keybinds = getActiveKeybinds();
+    for (KeybindInfo info : *keybinds) {
+        RegisterHotKeyFromText(failedHotkeys, info);
+    }
+
+    //registerSingleHotkey(1, MOD_ALT | MOD_NOREPEAT, 0xBC, "Alt + ,", "Add window to current group");
+    //registerSingleHotkey(2, MOD_ALT | MOD_NOREPEAT, 0xBE, "Alt + .", "Prepare for the next group");
+    //registerSingleHotkey(11, MOD_ALT | MOD_NOREPEAT, 0x49, "Alt + I'", "Edit the window's group");
+    //registerSingleHotkey(3, MOD_ALT | MOD_NOREPEAT, 0x4B, "Alt + K'", "Shift windows to the left");
+    //registerSingleHotkey(4, MOD_ALT | MOD_NOREPEAT, 0x4C, "Alt + L'", "Shift windows to the right");
+    //registerSingleHotkey(5, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4B, "Ctrl + Alt + K'", "Shift ALL windows to the left");
+    //registerSingleHotkey(6, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4C, "Ctrl + Alt + L'", "Shift ALL windows to the right");
+    //registerSingleHotkey(26, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4B, "Ctrl + Shift + K", "Shift ALL OTHER groups to the left");
+    //registerSingleHotkey(27, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4C, "Ctrl + Shift + L", "Shift ALL OTHER groups to the right");
+    //registerSingleHotkey(7, MOD_ALT | MOD_NOREPEAT, 0xDD, "Alt + ]", "Remove current window from it's group (Critical Bug)");
+    //registerSingleHotkey(8, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0xDD, "Ctrl + Alt + ]", "Delete the entire group current window is in");
+    //registerSingleHotkey(15, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0xDB, "Ctrl + Shift + [", "Delete all groups");
+    //registerSingleHotkey(9, MOD_ALT | MOD_NOREPEAT, 0x51, "Alt + Q", "Toggle visibility of the opposite windows in this group (NOT SOON WIP)");
+    //registerSingleHotkey(13, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x51, "Ctrl + Alt + Q", "Toggle visibility of all not main windows (May not work properly yet with Auto-key macro)");
+    //// ctrl shift a do current alt a, but that one should leave window updating in background
+    //registerSingleHotkey(10, MOD_ALT | MOD_NOREPEAT, 0x41, "Alt + A", "Toggle visibility of every last window in all the pairs and minimize the linked ones");
+    //registerSingleHotkey(18, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x44, "(WIP) Ctrl + Shift + D", "Set the window as main in current group");
+    //registerSingleHotkey(19, MOD_ALT | MOD_NOREPEAT, 0x44, "Alt + D", "(WIP) Swap to main window in current group");
+    //registerSingleHotkey(23, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x44, "Ctrl + Alt + D", "(WIP) Swap to main window in all groups");
+    //registerSingleHotkey(12, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x55, "Ctrl + Alt + U", "Get all RBX and VMWW windows back from background");
+    //registerSingleHotkey(24, MOD_CONTROL | MOD_NOREPEAT, 0x55, "Ctrl + U", "Put current foregrounded window to background");
+    //registerSingleHotkey(25, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x55, "Ctrl + Shift + U", "Get specific windows from background by their name");
+    //registerSingleHotkey(16, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x56, "Ctrl + Shift + V", "(WIP, NOT SOON) Start/Stop adjusting new RBX windows to screen quarters");
+    //registerSingleHotkey(14, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x56, "Ctrl + Alt + V", "Connect all RBX windows to 4 quarter groups");
+    //registerSingleHotkey(30, MOD_ALT | MOD_NOREPEAT, 0x56, "Alt + V", "Connect absolutely all RBX windows into one single group");
+    //registerSingleHotkey(28, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x41, "Ctrl + Shift + A", "Bring all connected windows to foreground");
+    //registerSingleHotkey(17, MOD_ALT | MOD_NOREPEAT, 0x47, "Alt + G", "Start/stop the automatical sequence macro for Roblox windows");
+    //registerSingleHotkey(29, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x47, "Ctrl + Alt + G", "Set the macro key (or sequence) for this group");
+    //registerSingleHotkey(31, MOD_ALT | MOD_NOREPEAT, 0x48, "Alt + H", "Reload all configs");
+    //registerSingleHotkey(20, MOD_ALT | MOD_NOREPEAT, 0x50, "Alt + P", "Show the debug list of the linked windows", true);
+    //registerSingleHotkey(21, MOD_ALT | MOD_NOREPEAT, 0xDC, "Alt + \\", "Test", true);
 
     if (failedHotkeys.size() > 0) {
         std::cout << "\nFailed to register " << failedHotkeys.size() << " hotkey";
@@ -608,6 +619,10 @@ void restoreAllConnected() {
     }
 }
 
+std::atomic<bool>& getStopMacroInput() {
+    return stopMacroInput;
+}
+
 bool waitIfInterrupted() {
     if (interruptionManager == nullptr || !interruptionManager.load()->isModeEnabled().load()) return false;
     int waitFor = interruptionManager.load()->getUntilNextMacroRetryAtomic().load();
@@ -653,11 +668,11 @@ void keyReleaseString(string key) {
 
 bool pressAndUnpressAKey(HWND w, Key k) { // returns true if was paused and needs to repeat the cycle
     if (!k.enabled || k.keyCode == "EXAMPLE") return false;
-    if (stopMacroInput) return false;
+    if (stopMacroInput.load()) return false;
     if (waitIfInterrupted()) return true;
 
     customSleep(k.beforeKeyPress);
-    if (stopMacroInput) return false;
+    if (stopMacroInput.load()) return false;
     if (waitIfInterrupted()) return true;
 
     interruptionManager.load()->addPendingSentInput(k.keyCode); // BEFORE actually pressing! Or the handler will get it before it's added
@@ -665,7 +680,7 @@ bool pressAndUnpressAKey(HWND w, Key k) { // returns true if was paused and need
     
     customSleep(k.holdFor);
     keyReleaseInput(mapOfKeys[k.keyCode]);
-    if (stopMacroInput) return false;
+    if (stopMacroInput.load()) return false;
     if (waitIfInterrupted()) return true;
 
     customSleep(k.afterKeyPress);
@@ -678,7 +693,7 @@ void performASequence(HWND w) {
             vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
             if (keys.size() > 0) {
                 for (auto& el : keys) {
-                    if (stopMacroInput) return;
+                    if (stopMacroInput.load()) return;
                     hasBeenInterrupted = pressAndUnpressAKey(w, el);
                     if (hasBeenInterrupted) break;
                 }
@@ -690,7 +705,7 @@ void performASequence(HWND w) {
         }
         else {
             for (auto& el : mainSequence->getKeys()) {
-                if (stopMacroInput) return;
+                if (stopMacroInput.load()) return;
                 hasBeenInterrupted = pressAndUnpressAKey(w, el);
                 // The macro has been interrupted and paused, and now we need to restart the entire sequence
                 if (hasBeenInterrupted) break;
@@ -719,7 +734,7 @@ void focusAndSendSequence(HWND hwnd) { // find this
 
 void performInputsEverywhere() {
     for (auto& it : referenceToGroup) {
-        if (stopMacroInput) return;
+        if (stopMacroInput.load()) return;
         focusAndSendSequence(it.first);
         customSleep(macroDelayBeforeSwitching);
     }
@@ -727,7 +742,7 @@ void performInputsEverywhere() {
 
 void startUsualMacroLoop() {
     customSleep(macroDelayInitial);
-    while (!stopMacroInput) {
+    while (!stopMacroInput.load()) {
         //for (int i = 0x5; i <= 0x30; i++) { // 5A
             //if (stopInput) return;
             //cout << std::hex << key << endl;
@@ -781,8 +796,8 @@ void toggleMacroState() {
     if (referenceToGroup.size() == 0) {
         cout << "You haven't linked any windows yet!\n";
     }
-    else if (stopMacroInput) {
-        stopMacroInput = false;
+    else if (stopMacroInput.load()) {
+        stopMacroInput.store(false);
         cout << "Starting...\n";
         if (specialSingleWindowModeEnabled && referenceToGroup.size() == 1) {
             performSingleWindowedHold();
@@ -792,7 +807,7 @@ void toggleMacroState() {
         }
     }
     else {
-        stopMacroInput = true;
+        stopMacroInput.store(true);
         if (referenceToGroup.size() == 1) releaseConfiguredKey();
         cout << "Stopped\n";
     }
@@ -1226,10 +1241,140 @@ void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig) {
     removeConfigValue(config, "settings/macro/defaultKey", true);
 }
 
-bool loadConfig(string programPath) {
+enum ConfigType {
+    MAIN_CONFIG,
+    KEYBINDS_CONFIG
+};
+
+string configTypeToString(ConfigType type) {
+    switch (type)
+    {
+    case MAIN_CONFIG:
+        return "Settings";
+    case KEYBINDS_CONFIG:
+        return "Keybindings";
+    default:
+        return "Unknown config type";
+    }
+}
+
+YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConfig) {
+    if (!wasEmpty) {
+        string oldConfigVersion;
+        YAML::Node versionData;
+        try {
+            versionData = getConfigValue(config, "internal/configVersion");
+            oldConfigVersion = versionData.as<string>();
+        }
+        catch (const YAML::Exception& e) {
+            oldConfigVersion = "2.0";
+        }
+        if (oldConfigVersion == "2.0") {
+            updateConfig2_0_TO_2_1(config, wrongConfig);
+            oldConfigVersion = "2.1";
+        }
+        if (oldConfigVersion == "2.1") {
+            // no refactoring
+            oldConfigVersion = "2.2";
+        }
+    }
+
+    macroDelayInitial = getConfigInt(config, "settings/macro/general/initialDelayBeforeFirstIteration", 100);
+    macroDelayBeforeSwitching = getConfigInt(config, "settings/macro/general/delayBeforeSwitchingWindow", 0);
+    macroDelayAfterFocus = getConfigInt(config, "settings/macro/general/delayAfterSwitchingWindow", 200);
+    macroDelayBetweenSwitchingAndFocus = getConfigInt(config, "settings/macro/general/settingsChangeOnlyWhenReallyNeeded/afterSettingForegroundButBeforeSettingFocus", 10);
+    specialSingleWindowModeEnabled = getConfigBool(config, "settings/macro/general/specialSingleWindowMode/enabled", false);
+    specialSingleWindowModeKeyCode = getConfigString(config, "settings/macro/general/specialSingleWindowMode/keyCode", defaultMacroKey);
+
+    sleepRandomnessPersent = getConfigInt(config, "settings/macro/general/randomness/delays/delayOffsetPersentage", 10);
+    sleepRandomnessMaxDiff = getConfigInt(config, "settings/macro/general/randomness/delays/delayOffsetLimit", 40);
+
+    // if no yaml structure errors
+    if (!wrongConfig) {
+        // resetting main sequence and reading what config has
+        readNewMainSequence(config);
+        // if there is nothing
+        if (mainSequence->countEnabledKeys() == 0) {
+            // set default values
+            setConfigValue(config, "settings/macro/mainKeySequence", getDefaultSequenceList());
+            // reset the sequence and read the yaml object again
+            readNewMainSequence(config);
+        }
+    }
+    else {
+        readDefaultMainSequence(config);
+    }
+
+    // extra sequences
+    if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", vector<YAML::Node>());
+    YAML::Node extraSequences = getConfigValue(config, "settings/macro/extraKeySequences");
+    if (extraSequences.IsMap()) {
+        //for (auto& otherSeq : knownOtherSequences) {
+        //    delete &otherSeq;
+        //}
+        knownOtherSequences.clear();
+        for (YAML::const_iterator at = extraSequences.begin(); at != extraSequences.end(); at++) {
+            knownOtherSequences[at->first.as<string>()] = new KeySequence(at->second);
+        }
+    }
+
+    // if no yaml structure errors
+    if (!wrongConfig) {
+        // resetting input interruption manager and reading what config has
+        readNewInterruptionManager(config);
+        bool nothingKeyboard = interruptionManager.load()->getConfigurations(KEYBOARD)->size() == 0;
+        bool nothingMouse = interruptionManager.load()->getConfigurations(MOUSE)->size() == 0;
+        // if there is nothing
+        if (nothingKeyboard || nothingMouse) {
+            //cout << "Nothing\n";
+            // set default values
+            YAML::Node* defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(KEYBOARD);
+            if (nothingKeyboard) setConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases", *defaultList);
+            delete defaultList;
+
+            defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(MOUSE);
+            if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases", *defaultList);
+            delete defaultList;
+
+            defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(ANY_INPUT);
+            if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases", *defaultList);
+            delete defaultList;
+
+            // reset the manager and read the yaml object again
+            readNewInterruptionManager(config);
+        }
+    }
+    else {
+        readDefaultMainSequence(config);
+        readDefaultInterruptionManager(config);
+    }
+
+    vector<string> localDefaultFastForegroundWindows;
+    localDefaultFastForegroundWindows.push_back("Roblox");
+    localDefaultFastForegroundWindows.push_back("VMware Workstation");
+    defaultFastForegroundWindows = getConfigVectorString(config, "settings/fastReturnToForegroundWindows", localDefaultFastForegroundWindows);
+
+    // saving
+    setConfigValue(config, "internal/configVersion", currentConfigVersion);
+    return config;
+}
+
+bool loadConfig(ConfigType type) {
     try {
         string folderPath = "WindowSwitcherSettings";
-        string fileName = "settings.yml";
+        string fileName;
+        switch (type)
+        {
+        case MAIN_CONFIG:
+            fileName = "settings.yml";
+            break;
+        case KEYBINDS_CONFIG:
+            fileName = "keybindings.yml";
+            break;
+        default:
+            cout << "Unsupported config type\n";
+            return false;
+        }
         YAML::Node config;
         bool wrongConfig = false;
         bool wasEmpty = false;
@@ -1249,116 +1394,35 @@ bool loadConfig(string programPath) {
             wrongConfig = true;
         }*/
         catch (const YAML::Exception& e) {
-            addConfigLoadingMessage("WARNING | UNKNOWN ERROR WHILE LOADING THE CONFIG!\nERROR TEXT | " + string(e.what()));
+            addConfigLoadingMessage("WARNING | UNKNOWN ERROR WHILE LOADING " + configTypeToString(type) + " CONFIG!\nERROR TEXT | " + string(e.what()));
             config = YAML::Node();
             wrongConfig = true;
         }
 
         if (wrongConfig) {
-            addConfigLoadingMessage("WARNING | For safery reasons, only default values will be used and NO CHANGES WILL BE APPLIED to the actual config");
-        }
-
-        if (!wasEmpty) {
-            string oldConfigVersion;
-            YAML::Node versionData;
-            try {
-                versionData = getConfigValue(config, "internal/configVersion");
-                oldConfigVersion = versionData.as<string>();
-            }
-            catch (const YAML::Exception& e) {
-                oldConfigVersion = "2.0";
-            }
-            if (oldConfigVersion == "2.0") {
-                updateConfig2_0_TO_2_1(config, wrongConfig);
-                oldConfigVersion = "2.1";
-            }
-            if (oldConfigVersion == "2.1") {
-                // no refactoring
-                oldConfigVersion = "2.2";
-            }
-        }
-
-        macroDelayInitial = getConfigInt(config, "settings/macro/general/initialDelayBeforeFirstIteration", 100);
-        macroDelayBeforeSwitching = getConfigInt(config, "settings/macro/general/delayBeforeSwitchingWindow", 0);
-        macroDelayAfterFocus = getConfigInt(config, "settings/macro/general/delayAfterSwitchingWindow", 200);
-        macroDelayBetweenSwitchingAndFocus = getConfigInt(config, "settings/macro/general/settingsChangeOnlyWhenReallyNeeded/afterSettingForegroundButBeforeSettingFocus", 10);
-        specialSingleWindowModeEnabled = getConfigBool(config, "settings/macro/general/specialSingleWindowMode/enabled", false);
-        specialSingleWindowModeKeyCode = getConfigString(config, "settings/macro/general/specialSingleWindowMode/keyCode", defaultMacroKey);
-
-        sleepRandomnessPersent = getConfigInt(config, "settings/macro/general/randomness/delays/delayOffsetPersentage", 10);
-        sleepRandomnessMaxDiff = getConfigInt(config, "settings/macro/general/randomness/delays/delayOffsetLimit", 40);
-
-        // if no yaml structure errors
-        if (!wrongConfig) {
-            // resetting main sequence and reading what config has
-            readNewMainSequence(config);
-            // if there is nothing
-            if (mainSequence->countEnabledKeys() == 0) {
-                // set default values
-                setConfigValue(config, "settings/macro/mainKeySequence", getDefaultSequenceList());
-                // reset the sequence and read the yaml object again
-                readNewMainSequence(config);
-            }
-        }
-        else {
-            readDefaultMainSequence(config);
-        }
-
-        // extra sequences
-        if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", vector<YAML::Node>());
-        YAML::Node extraSequences = getConfigValue(config, "settings/macro/extraKeySequences");
-        if (extraSequences.IsMap()) {
-            //for (auto& otherSeq : knownOtherSequences) {
-            //    delete &otherSeq;
-            //}
-            knownOtherSequences.clear();
-            for (YAML::const_iterator at = extraSequences.begin(); at != extraSequences.end(); at++) {
-                knownOtherSequences[at->first.as<string>()] = new KeySequence(at->second);
-            }
-        }
-
-        // if no yaml structure errors
-        if (!wrongConfig) {
-            // resetting input interruption manager and reading what config has
-            readNewInterruptionManager(config);
-            bool nothingKeyboard = interruptionManager.load()->getConfigurations(KEYBOARD)->size() == 0;
-            bool nothingMouse = interruptionManager.load()->getConfigurations(MOUSE)->size() == 0;
-            // if there is nothing
-            if (nothingKeyboard || nothingMouse) {
-                //cout << "Nothing\n";
-                // set default values
-                YAML::Node* defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(KEYBOARD);
-                if(nothingKeyboard) setConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases", *defaultList);
-                delete defaultList;
-
-                defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(MOUSE);
-                if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases", *defaultList);
-                delete defaultList;
-
-                defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(ANY_INPUT);
-                if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases", *defaultList);
-                delete defaultList;
-
-                // reset the manager and read the yaml object again
-                readNewInterruptionManager(config);
-            }
-        }
-        else {
-            readDefaultMainSequence(config);
-            readDefaultInterruptionManager(config);
+            addConfigLoadingMessage("WARNING | For safery reasons, only default values will be used and NO CHANGES WILL BE APPLIED to the actual config (" + configTypeToString(type) + ")");
         }
         
-        vector<string> localDefaultFastForegroundWindows;
-        localDefaultFastForegroundWindows.push_back("Roblox");
-        localDefaultFastForegroundWindows.push_back("VMware Workstation");
-        defaultFastForegroundWindows = getConfigVectorString(config, "settings/fastReturnToForegroundWindows", localDefaultFastForegroundWindows);
+        YAML::Node newConfig;
 
-        // saving
-        setConfigValue(config, "internal/configVersion", currentConfigVersion);
-        if (!wrongConfig) saveYaml(config, getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName);
-        //if (!wrongConfig) saveYaml(config, getProgramFolderPath(programPath) + "/" + folderPath + "/" + "test_" + fileName); // test
-        
+        switch (type)
+        {
+        case MAIN_CONFIG:
+            newConfig = loadSettingsConfig(config, wasEmpty, wrongConfig);
+            break;
+        case KEYBINDS_CONFIG:
+            newConfig = loadKeybindingsConfig(config, wasEmpty, wrongConfig);
+            break;
+        default:
+            cout << "Unsupported config type\n";
+            return false;
+        }
+
+        if (!wrongConfig) saveYaml(newConfig, getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName);
+        //if (!wrongConfig) saveYaml(newConfig, getProgramFolderPath(programPath) + "/" + folderPath + "/" + "test_" + fileName); // test
+
         initialConfigLoading = false;
+
         return true;
     }
     catch (const YAML::Exception& e) {
@@ -1372,7 +1436,13 @@ bool loadConfig(string programPath) {
     }
 }
 
+void reloadConfigs() {
+    loadConfig(MAIN_CONFIG);
+    loadConfig(KEYBINDS_CONFIG);
+}
+
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    //cout << interruptionManager.load()->isModeEnabled().load();
     if (interruptionManager != nullptr && interruptionManager.load()->isModeEnabled().load()) { // interruptionManager.load()->getModeEnabled().load()
         if (nCode >= 0) {
             bool ignore = false;
@@ -1385,6 +1455,7 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
                 string formattedKey;
                 KBDLLHOOKSTRUCT* pkbhs = (KBDLLHOOKSTRUCT*)lParam;
+                
                 bool isCharInput = (pkbhs->vkCode >= 'A' && pkbhs->vkCode <= 'Z') ||
                     (pkbhs->vkCode >= '0' && pkbhs->vkCode <= '9');
 
@@ -1397,6 +1468,9 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                     // Special character
                     int intForm = (int)pkbhs->vkCode;
                     formattedKey = std::to_string(intForm);
+
+                    //cout << "{\"" << intForm << "\", " << ParseHotkeyCode(formattedKey) << "},\n";
+
                     if (keyboardHookSpecialVirtualKeyCodeToText.count(intForm) > 0) {
                         formattedKey = keyboardHookSpecialVirtualKeyCodeToText[intForm];
                     }
@@ -1526,7 +1600,7 @@ void macroDelayModificationLoop() {
             if (curValue == 0) {
                 storeCurDelay(curValue);
                 notifyTheMacro();
-                if(interruptionManager.load()->getInformOnEvents()) cout << "Unpaused\n";
+                if(interruptionManager.load()->getInformOnEvents() && !getStopMacroInput().load()) cout << "Unpaused\n";
                 
             }
             else {
@@ -1601,12 +1675,14 @@ int actualMain(int argc, char* argv[]) {
     cout << a / b;*/
 
     setlocale(0, "");
-
+    programPath = argv[0];
     initializeRandom();
-    loadConfig(argv[0]);
+    reloadConfigs();
     rememberInitialPermanentSettings();
     registerHotkeys();
     printConfigLoadingMessages();
+
+    //helpGenerateKeyMap();
 
     // Listening for inputs for macro interuptions
     if (interruptionManager.load()->getShouldStartDelayModificationLoop().load()) {
@@ -1692,7 +1768,7 @@ int actualMain(int argc, char* argv[]) {
                 connectAllRbxsNoMatterWhat();
             }
             else if (msg.wParam == 31) {
-                loadConfig(argv[0]);
+                reloadConfigs();
                 printConfigLoadingMessages();
             }
             // EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE
