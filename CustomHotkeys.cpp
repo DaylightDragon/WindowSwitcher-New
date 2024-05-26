@@ -144,6 +144,7 @@ std::map<std::string, int> keybindingTextToKey = {
     {"?", 191},
     { "shift", VK_SHIFT },
     { "ctrl", VK_CONTROL },
+    { "alt", VK_MENU },
     { "tab", VK_TAB },
     { "numpad0", VK_NUMPAD0 },
     { "numpad1", VK_NUMPAD1 },
@@ -241,13 +242,49 @@ WORD ParseHotkeyCode(const std::string& hotKeyText) {
     }
 }
 
+std::string capitalizeFirstLetter(const std::string& word) {
+    std::string capitalizedWord = word;
+    capitalizedWord[0] = std::toupper(capitalizedWord[0]);
+
+    return capitalizedWord;
+}
+
+string makeHkStringPretty(string& hotkey) {
+    std::istringstream iss(hotkey);
+    std::string word;
+    std::stringstream ss;
+
+    while (iss >> word) {
+        if (keybindingTextToKey.find(word) != keybindingTextToKey.end()) {
+            std::string capitalizedWord = capitalizeFirstLetter(word);
+            ss << capitalizedWord << " + ";
+        }
+        else {
+            ss << word << " ";
+        }
+    }
+    hotkey = ss.str();
+
+    // Removing extra characters at the end
+    int charsToErase = 3;
+    if (charsToErase <= hotkey.length()) {
+        hotkey.erase(hotkey.length() - charsToErase);
+    }
+
+    return hotkey;
+}
+
 bool RegisterHotKeyFromText(std::vector<std::string>& failedHotkeys, KeybindInfo& info) {
     string hotKeyStr = info.hotkey;
     std::transform(hotKeyStr.begin(), hotKeyStr.end(), hotKeyStr.begin(), ::tolower);
     hotKeyStr.erase(std::remove(hotKeyStr.begin(), hotKeyStr.end(), '+'), hotKeyStr.end());
+    info.hotkey = hotKeyStr;
 
     WORD hotKey = ParseHotkeyCode(hotKeyStr);
     int modifiers = ParseHotKeyModifiers(hotKeyStr);
+
+    // Making it prettier
+    info.hotkey = makeHkStringPretty(info.hotkey);
 
     //std::cout << modifiers << ' ' << hotKey << '\n';
     if (hotKey != -1) if (RegisterHotKey(NULL, info.id, modifiers, hotKey)) {
@@ -256,7 +293,7 @@ bool RegisterHotKeyFromText(std::vector<std::string>& failedHotkeys, KeybindInfo
         return true;
     }
     else {
-        failedHotkeys.push_back(hotKeyStr + " (" + info.description + ")");
+        failedHotkeys.push_back(info.hotkey + " (" + info.description + ")");
         return false;
     }
 }
@@ -290,7 +327,7 @@ vector<KeybindInfo>* getDefaultKeybinds() {
     result->push_back(KeybindInfo(28, "Ctrl + Shift + A", "bringAllConnectedWindowsToForeground", "Bring all connected windows to foreground"));
     result->push_back(KeybindInfo(17, "Alt + G", "toggleSequenceMacro", "Start/stop the automatical sequence macro for game windows"));
     result->push_back(KeybindInfo(29, "Ctrl + Alt + G", "setMacroKeyOrSequenceForGroup", "Set the macro key (or sequence) for this group"));
-    result->push_back(KeybindInfo(31, "Alt + H", "reloadAllConfigs", "Reload all configs"));
+    result->push_back(KeybindInfo(31, "Alt + H", "reloadAllConfigs", "Reload all configs (NO KEYBINDS RELOADING FOR NOW)"));
     result->push_back(KeybindInfo(20, "Alt + P", "showDebugListOfLinkedWindows", "Show the debug list of the linked windows").setHidden(true));
     result->push_back(KeybindInfo(21, "Alt + \\", "someTest", "Test").setHidden(true));
 
