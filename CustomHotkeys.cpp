@@ -408,6 +408,7 @@ YAML::Node& loadKeybindingsConfig(YAML::Node& config, bool wasEmpty, bool wrongC
         cout << it.toString() << '\n';
     }*/
 
+    setConfigValue(config, "internal/configVersion", getCurrentConfigVersion());
     return config;
 }
 

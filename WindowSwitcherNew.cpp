@@ -93,6 +93,10 @@ bool getDebugMode() {
     return debugMode;
 }
 
+std::string getCurrentConfigVersion() {
+    return currentConfigVersion;
+}
+
 bool checkHungWindow(HWND hwnd) {
     if (IsHungAppWindow(hwnd)) {
         currentHangWindows += 1;
