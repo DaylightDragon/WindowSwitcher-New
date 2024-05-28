@@ -276,12 +276,20 @@ string makeHkStringPretty(string& hotkey) {
 
 bool RegisterHotKeyFromText(std::vector<std::string>& failedHotkeys, KeybindInfo& info) {
     string hotKeyStr = info.hotkey;
+    // Lowercase
     std::transform(hotKeyStr.begin(), hotKeyStr.end(), hotKeyStr.begin(), ::tolower);
+    // Removing pluses
     hotKeyStr.erase(std::remove(hotKeyStr.begin(), hotKeyStr.end(), '+'), hotKeyStr.end());
     info.hotkey = hotKeyStr;
 
-    WORD hotKey = ParseHotkeyCode(hotKeyStr);
-    int modifiers = ParseHotKeyModifiers(hotKeyStr);
+    // Check disabled
+    if (info.hotkey.find("disable") != std::string::npos) {
+        return false;
+    }
+
+    // Parse the hotkey
+    WORD hotKey = ParseHotkeyCode(info.hotkey);
+    int modifiers = ParseHotKeyModifiers(info.hotkey);
 
     // Making it prettier
     info.hotkey = makeHkStringPretty(info.hotkey);
@@ -328,8 +336,8 @@ vector<KeybindInfo>* getDefaultKeybinds() {
     result->push_back(KeybindInfo(17, "Alt + G", "toggleSequenceMacro", "Start/stop the automatical sequence macro for game windows"));
     result->push_back(KeybindInfo(29, "Ctrl + Alt + G", "setMacroKeyOrSequenceForGroup", "Set the macro key (or sequence) for this group"));
     result->push_back(KeybindInfo(31, "Alt + H", "reloadAllConfigs", "Reload all configs (NO KEYBINDS RELOADING FOR NOW)"));
-    result->push_back(KeybindInfo(20, "Alt + P", "showDebugListOfLinkedWindows", "Show the debug list of the linked windows").setHidden(true));
-    result->push_back(KeybindInfo(21, "Alt + \\", "someTest", "Test").setHidden(true));
+    result->push_back(KeybindInfo(20, "Disable Alt + P", "showDebugListOfLinkedWindows", "Show the debug list of the linked windows").setHidden(true));
+    result->push_back(KeybindInfo(21, "Disable Alt + \\", "someTest", "Test").setHidden(true));
 
     return result;
 }

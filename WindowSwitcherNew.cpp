@@ -5,6 +5,7 @@
 #include "GeneralUtils.h"
 #include "KeySequence.h"
 #include "CustomHotkeys.h"
+#include "Data.h"
 
 #include <windows.h>
 #include <iostream>
@@ -24,6 +25,7 @@
 // Pre-defining all classes and methods
 class WindowGroup;
 void deleteWindowGroup(WindowGroup* wg);
+Settings
 
 // Windows, sequences and managers
 map<HWND, WindowGroup*> referenceToGroup;
@@ -670,52 +672,56 @@ void keyReleaseString(string key) {
     keyReleaseInput(mapOfKeys[key]);
 }
 
+bool notTargetWindowActive(HWND target) {
+    HWND foregr = GetForegroundWindow();
+    return foregr != target;
+}
+
 bool pressAndUnpressAKey(HWND w, Key k) { // returns true if was paused and needs to repeat the cycle
     if (!k.enabled || k.keyCode == "EXAMPLE") return false;
     if (stopMacroInput.load()) return false;
-    if (waitIfInterrupted()) return true;
+    if (waitIfInterrupted() || notTargetWindowActive(w)) return true;
 
     customSleep(k.beforeKeyPress);
     if (stopMacroInput.load()) return false;
-    if (waitIfInterrupted()) return true;
-
+    if (waitIfInterrupted() || notTargetWindowActive(w)) return true;
     interruptionManager.load()->addPendingSentInput(k.keyCode); // BEFORE actually pressing! Or the handler will get it before it's added
     keyPressInput(mapOfKeys[k.keyCode]);
     
     customSleep(k.holdFor);
-    keyReleaseInput(mapOfKeys[k.keyCode]);
     if (stopMacroInput.load()) return false;
-    if (waitIfInterrupted()) return true;
+    if (waitIfInterrupted() || notTargetWindowActive(w)) return true;
+    keyReleaseInput(mapOfKeys[k.keyCode]);
 
     customSleep(k.afterKeyPress);
 }
 
-void performASequence(HWND w) {
-    bool hasBeenInterrupted = true;
-    while (hasBeenInterrupted) {
-        if (groupToKey.count(referenceToGroup[w])) {
-            vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
-            if (keys.size() > 0) {
-                for (auto& el : keys) {
-                    if (stopMacroInput.load()) return;
-                    hasBeenInterrupted = pressAndUnpressAKey(w, el);
-                    if (hasBeenInterrupted) break;
-                }
-            }
-            else {
-                cout << "You can't have no actions in a sequence! Waiting a bit instead\n"; // kostil
-                customSleep(100);
+bool performASequence(HWND w) {
+    bool shouldRestartSequence = false;
+    if (groupToKey.count(referenceToGroup[w])) {
+        vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
+        if (keys.size() > 0) {
+            for (auto& el : keys) {
+                if (stopMacroInput.load()) return false;
+                shouldRestartSequence = pressAndUnpressAKey(w, el);
+                if (shouldRestartSequence) break;
             }
         }
         else {
-            for (auto& el : mainSequence->getKeys()) {
-                if (stopMacroInput.load()) return;
-                hasBeenInterrupted = pressAndUnpressAKey(w, el);
-                // The macro has been interrupted and paused, and now we need to restart the entire sequence
-                if (hasBeenInterrupted) break;
-            }
+            cout << "You can't have no actions in a sequence! Waiting a bit instead\n"; // kostil
+            customSleep(100);
         }
     }
+    else {
+        for (auto& el : mainSequence->getKeys()) {
+            if (stopMacroInput.load()) return false;
+            //cout << "Pressing\n";
+            shouldRestartSequence = pressAndUnpressAKey(w, el);
+            // The macro has been interrupted and paused, and now we need to restart the entire sequence
+            if (shouldRestartSequence) break;
+        }
+    }
+    return shouldRestartSequence;
 }
 
 void focusAndSendSequence(HWND hwnd) { // find this
@@ -727,13 +733,16 @@ void focusAndSendSequence(HWND hwnd) { // find this
     //cout << "test\n";
     //cout << "key: " << key << endl;
 
-    SetForegroundWindow(hwnd);
-    customSleep(macroDelayBetweenSwitchingAndFocus);
-    SetFocus(hwnd);
+    bool shouldRestartSequence = true;
+    while (shouldRestartSequence) {
+        SetForegroundWindow(hwnd);
+        customSleep(macroDelayBetweenSwitchingAndFocus);
+        SetFocus(hwnd);
 
-    customSleep(macroDelayAfterFocus);
+        customSleep(macroDelayAfterFocus);
 
-    performASequence(hwnd);
+        shouldRestartSequence = performASequence(hwnd);
+    }
 }
 
 void performInputsEverywhere() {
@@ -1547,8 +1556,10 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
+bool registerHooksInDebug = true;
+
 void keyboardHookFunc() {
-    if (!debugMode) {
+    if (registerHooksInDebug || !debugMode) {
         keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, NULL, 0);
         if (keyboardHook == NULL) std::cout << "Failed to register the keyboard hook for macro pauses" << std::endl;
 
@@ -1566,7 +1577,7 @@ void keyboardHookFunc() {
 }
 
 void MouseHookFunc() {
-    if (!debugMode) {
+    if (registerHooksInDebug || !debugMode) {
         mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, NULL, 0);
         if (mouseHook == NULL) std::cout << "Failed to register the mouse hook for macro pauses" << std::endl;
 
