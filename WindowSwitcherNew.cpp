@@ -1,4 +1,6 @@
-﻿#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+﻿// Window Switcher
+
+#pragma comment(lib, "Dwmapi.lib") // for DwmGetWindowAttribute and so on
 
 #include <yaml-cpp/yaml.h>
 #include "ConfigOperations.h"
@@ -19,8 +21,6 @@
 #include <dwmapi.h>
 #include <condition_variable>
 #include <csignal>
-
-#pragma comment(lib, "Dwmapi.lib")
 
 // Pre-defining all classes and methods
 class WindowGroup;
@@ -43,7 +43,7 @@ std::vector<HWND> autoGroup4;
 std::vector<HWND> autoGroupAllWindows;
 
 // Permanent settings
-std::string currentConfigVersion = "2.2";
+std::string currentVersion = "2.2";
 std::wstring rx_name = L"Roblox";
 std::string programPath;
 
@@ -95,8 +95,12 @@ bool getDebugMode() {
     return debugMode;
 }
 
-std::string getCurrentConfigVersion() {
-    return currentConfigVersion;
+std::string getCurrentVersion() {
+    return currentVersion;
+}
+
+void printTitle() {
+    std::cout << "Window Switcher - Version " << getCurrentVersion() << "\n\n";
 }
 
 bool checkHungWindow(HWND hwnd) {
@@ -1368,7 +1372,7 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
     defaultFastForegroundWindows = getConfigVectorString(config, "settings/fastReturnToForegroundWindows", localDefaultFastForegroundWindows);
 
     // saving
-    setConfigValue(config, "internal/configVersion", currentConfigVersion);
+    setConfigValue(config, "internal/configVersion", currentVersion);
     return config;
 }
 
@@ -1688,6 +1692,8 @@ int actualMain(int argc, char* argv[]) {
     /*int a = 0;
     int b = 0;
     std::cout << a / b;*/
+
+    printTitle();
 
     setlocale(0, "");
     programPath = argv[0];

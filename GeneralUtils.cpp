@@ -1,5 +1,3 @@
-using namespace std;
-
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
@@ -7,7 +5,7 @@ using namespace std;
 //getProgramFolderPath(string(argv[0]));
 std::string getProgramFolderPath(const std::string& programPath) {
     size_t lastSlashIndex = programPath.find_last_of("/\\\\");
-    if (lastSlashIndex != string::npos) {
+    if (lastSlashIndex != std::string::npos) {
         return programPath.substr(0, lastSlashIndex);
     }
     return "";

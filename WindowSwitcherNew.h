@@ -6,4 +6,4 @@
 
 std::map<std::string, int> getMapOfKeys();
 std::atomic<bool>& getStopMacroInput();
-std::string getCurrentConfigVersion();
+std::string getCurrentVersion();

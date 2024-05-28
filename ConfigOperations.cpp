@@ -1,3 +1,5 @@
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+
 #include "WindowSwitcherNew.h"
 #include "GeneralUtils.h"
 #include <yaml-cpp/yaml.h>
@@ -9,19 +11,16 @@
 #include <sys/stat.h>
 #include <filesystem>
 #include <map>
-//#include <optio
-
-#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <experimental/filesystem>
-
-std::string configLoadingMessages = "";
-namespace fs = std::experimental::filesystem;
 
 #ifdef _WIN32
 #include <direct.h>
 #else
 #include <sys/stat.h>
 #endif
+
+namespace fs = std::experimental::filesystem;
+std::string configLoadingMessages = "";
 
 bool createDirectory(const std::string& path) {
     int status;
