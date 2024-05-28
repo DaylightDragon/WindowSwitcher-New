@@ -386,7 +386,7 @@ class InputsInterruptionManager {
                 untilNextMacroRetry.store(delay);
                 if (informOnEvents.load()) {
                     if (!getStopMacroInput().load()) {
-                        cout << "Paused for " << delay << " seconds...\n";
+                        std::cout << "Paused for " << delay << " seconds...\n";
                     }
                 }
             }
@@ -440,13 +440,13 @@ class InputsInterruptionManager {
             return list;
         }
 
-        void addPendingSentInput(string key) {
+        void addPendingSentInput(std::string key) {
             SentInput input = SentInput(key, std::chrono::steady_clock::now());
             std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
             pendingSentInputs.push_back(input);
         }
 
-        bool checkIsInputPending(string key) {
+        bool checkIsInputPending(std::string key) {
             std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
 
             bool result = false;

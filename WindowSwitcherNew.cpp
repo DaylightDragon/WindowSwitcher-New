@@ -25,30 +25,30 @@
 // Pre-defining all classes and methods
 class WindowGroup;
 void deleteWindowGroup(WindowGroup* wg);
-Settings
+//Settings
 
 // Windows, sequences and managers
-map<HWND, WindowGroup*> referenceToGroup;
-map<WindowGroup*, KeySequence*> groupToKey;
+std::map<HWND, WindowGroup*> referenceToGroup;
+std::map<WindowGroup*, KeySequence*> groupToKey;
 WindowGroup* lastGroup;
 KeySequence* mainSequence;
-map<string, KeySequence*> knownOtherSequences = map<string, KeySequence*>();
+std::map<std::string, KeySequence*> knownOtherSequences = std::map<std::string, KeySequence*>();
 std::vector<std::string> failedHotkeys;
 std::atomic<InputsInterruptionManager*> interruptionManager;
 
-vector<HWND> autoGroup1;
-vector<HWND> autoGroup2;
-vector<HWND> autoGroup3;
-vector<HWND> autoGroup4;
-vector<HWND> autoGroupAllWindows;
+std::vector<HWND> autoGroup1;
+std::vector<HWND> autoGroup2;
+std::vector<HWND> autoGroup3;
+std::vector<HWND> autoGroup4;
+std::vector<HWND> autoGroupAllWindows;
 
 // Permanent settings
-string currentConfigVersion = "2.2";
-wstring rx_name = L"Roblox";
-string programPath;
+std::string currentConfigVersion = "2.2";
+std::wstring rx_name = L"Roblox";
+std::string programPath;
 
 // Main misc settings variables
-string defaultMacroKey = "e";
+std::string defaultMacroKey = "e";
 int macroDelayInitial;
 int macroDelayBeforeSwitching;
 int macroDelayBetweenSwitchingAndFocus;
@@ -56,8 +56,8 @@ int macroDelayAfterFocus;
 int macroDelayAfterKeyPress;
 int macroDelayAfterKeyRelease;
 bool specialSingleWindowModeEnabled;
-string specialSingleWindowModeKeyCode;
-vector<string> defaultFastForegroundWindows;
+std::string specialSingleWindowModeKeyCode;
+std::vector<std::string> defaultFastForegroundWindows;
 
 // Input randomness
 int sleepRandomnessPersent = 10;
@@ -68,7 +68,7 @@ std::atomic<bool> stopMacroInput = true;
 bool initialConfigLoading = true;
 bool hideNotMainWindows = false;
 int currentHangWindows = 0;
-wstring customReturnToFgName = L"";
+std::wstring customReturnToFgName = L"";
 int restoredCustomWindowsAmount = 0;
 
 // Permanent config variables
@@ -89,7 +89,7 @@ std::mutex macroWaitMutex;
 std::unique_lock<std::mutex> macroWaitLock = std::unique_lock<std::mutex>(macroWaitMutex);
 
 bool debugMode = IsDebuggerPresent();;
-//string mainConfigName = "WsSettings/settings.yml";
+//std::string mainConfigName = "WsSettings/settings.yml";
 
 bool getDebugMode() {
     return debugMode;
@@ -109,22 +109,22 @@ bool checkHungWindow(HWND hwnd) {
 
 void hungWindowsAnnouncement() {
     if (currentHangWindows != 0) {
-        string s = "Detected " + to_string(currentHangWindows) + " not responding window";
+        std::string s = "Detected " + std::to_string(currentHangWindows) + " not responding window";
         if (currentHangWindows > 1) s += "s";
         s += " during the last operation and skipped them";
-        cout << s << endl;
+        std::cout << s << '\n';
         currentHangWindows = 0;
     }
 }
 
 class WindowGroup {
 private:
-    vector<HWND> hwnds;
+    std::vector<HWND> hwnds;
     int index = 0;
 
 public:
-    vector<HWND> getOthers() {
-        vector<HWND> v;
+    std::vector<HWND> getOthers() {
+        std::vector<HWND> v;
         removeClosedWindows();
         if (&hwnds == NULL || hwnds.size() == 0) return v;
         for (int i = 0; i < hwnds.size(); i++) {
@@ -157,7 +157,7 @@ public:
     void removeWindow(HWND hwnd) {
         if (&hwnds == NULL || hwnds.size() == 0) return;
         removeClosedWindows();
-        //cout << "removeWindow " << hwnds.size() << " " << hwnd;
+        //std::cout << "removeWindow " << hwnds.size() << " " << hwnd;
         bool main = false;
         if (hwnd == hwnds[index]) main = true;
         referenceToGroup.erase(referenceToGroup.find(hwnd));
@@ -179,7 +179,7 @@ public:
             index = (hwnds.size() * (-1 * times) + index + times) % hwnds.size();
         }
         if (hideNotMainWindows) {
-            //cout << oldHwnd << " " << getCurrent() << endl;
+            //std::cout << oldHwnd << " " << getCurrent() << endl;
             HWND newHwnd = getCurrent();
             if (!checkHungWindow(newHwnd)) ShowWindow(newHwnd, SW_SHOW);
             if (!checkHungWindow(oldHwnd)) ShowWindow(oldHwnd, SW_HIDE);
@@ -204,7 +204,7 @@ public:
     }
 
     void hideOrShowOthers() {
-        vector<HWND> others = getOthers();
+        std::vector<HWND> others = getOthers();
         for (auto& it : others) {
             if (!checkHungWindow(it)) {
                 if (hideNotMainWindows) {
@@ -219,7 +219,7 @@ public:
 
     void testPrintHwnds() {
         for (auto& hwnd : hwnds) {
-            cout << "HWND " << &hwnd << endl;
+            std::cout << "HWND " << &hwnd << '\n';
         }
     }
 
@@ -249,7 +249,7 @@ void registerHotkeys() {
     failedHotkeys.clear();
     int totalHotkeys = 28;
 
-    vector<KeybindInfo>* keybinds = getActiveKeybinds();
+    std::vector<KeybindInfo>* keybinds = getActiveKeybinds();
     for (KeybindInfo info : *keybinds) {
         RegisterHotKeyFromText(failedHotkeys, info);
     }
@@ -302,7 +302,7 @@ void registerHotkeys() {
         }
     }
 
-    cout << endl;
+    std::cout << std::endl;
 }
 
 // Non-character ones will work only with interruptions disabled! (add to readme)
@@ -395,7 +395,7 @@ void customSleep(int duration) {
 
 WindowGroup* getGroup(HWND hwnd) {
     if (referenceToGroup.count(hwnd)) {
-        map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(hwnd);
+        std::map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(hwnd);
         WindowGroup* wg = it->second;
         return wg;
     }
@@ -403,16 +403,16 @@ WindowGroup* getGroup(HWND hwnd) {
 }
 
 void ShowOnlyMainInGroup(WindowGroup* wg) {
-    vector<HWND> others = (*wg).getOthers();
-    vector<HWND>::iterator iter;
+    std::vector<HWND> others = (*wg).getOthers();
+    std::vector<HWND>::iterator iter;
     for (iter = others.begin(); iter != others.end(); ++iter) {
-        //cout << *iter << " MINIMIZE" << endl;
+        //std::cout << *iter << " MINIMIZE" << endl;
         if (!hideNotMainWindows) {
             if (!checkHungWindow(*iter)) ShowWindow(*iter, SW_MINIMIZE);
         }
     }
     HWND c = (*wg).getCurrent();
-    //cout << c << " SW_RESTORE" << endl;
+    //std::cout << c << " SW_RESTORE" << endl;
     if (IsIconic(c)) {
         if (!checkHungWindow(c)) ShowWindow(c, SW_RESTORE); // what does it return if just z order far away but not minimized, maybe detect large windows above it
     }
@@ -420,7 +420,7 @@ void ShowOnlyMainInGroup(WindowGroup* wg) {
 
 void ShowOnlyMainInGroup(HWND hwnd) {
     if (referenceToGroup.count(hwnd)) {
-        map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(hwnd);
+        std::map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(hwnd);
         ShowOnlyMainInGroup(it->second);
     }
 }
@@ -436,17 +436,17 @@ void shiftGroup(HWND hwnd, int shift) {
     shiftGroup(wg, shift);
 }
 
-wstring getWindowName(HWND hwnd) {
+std::wstring getWindowName(HWND hwnd) {
     int length = GetWindowTextLength(hwnd);
     wchar_t* buffer = new wchar_t[length + 1];
     GetWindowTextW(hwnd, buffer, length + 1);
-    wstring ws(buffer);
+    std::wstring ws(buffer);
     return ws; // not nullptr later?
 }
 
 void shiftAllGroups(int shift) {
-    vector<WindowGroup*> used;
-    map<HWND, WindowGroup*>::iterator it;
+    std::vector<WindowGroup*> used;
+    std::map<HWND, WindowGroup*>::iterator it;
 
     for (it = referenceToGroup.begin(); it != referenceToGroup.end(); it++) {
         if (used.empty() || !(find(used.begin(), used.end(), it->second) != used.end())) {
@@ -457,19 +457,19 @@ void shiftAllGroups(int shift) {
 }
 
 void shiftAllOtherGroups(int shift) {
-    vector<WindowGroup*> used;
-    map<HWND, WindowGroup*>::iterator it;
+    std::vector<WindowGroup*> used;
+    std::map<HWND, WindowGroup*>::iterator it;
 
     HWND h = GetForegroundWindow();
 
     for (it = referenceToGroup.begin(); it != referenceToGroup.end(); it++) {
         if (used.empty() || !(find(used.begin(), used.end(), it->second) != used.end())) {
-            //cout << (h == it->first) << endl;
-            //wcout << getWindowName(it->first) << endl;
-            //wcout << getWindowName(h) << endl;
-            //cout << it->second << endl;
-            //cout << referenceToGroup[h] << endl << endl;
-            //cout << (referenceToGroup[h] == it->second) << endl;
+            //std::cout << (h == it->first) << endl;
+            //std::wcout << getWindowName(it->first) << endl;
+            //std::wcout << getWindowName(h) << endl;
+            //std::cout << it->second << endl;
+            //std::cout << referenceToGroup[h] << endl << endl;
+            //std::cout << (referenceToGroup[h] == it->second) << endl;
             if (referenceToGroup[h] != it->second) shiftGroup(it->second, shift);
             used.push_back(it->second); // is * refering to it or it->second?
         }
@@ -477,7 +477,7 @@ void shiftAllOtherGroups(int shift) {
 
     SetForegroundWindow(h);
 
-    cout << endl;
+    //std::cout << '\n';
 }
 
 void deleteWindow(HWND hwnd) {
@@ -490,8 +490,8 @@ void deleteWindow(HWND hwnd) {
 
 void deleteWindowGroup(WindowGroup* wg) {
     /*for (auto& p : referenceToGroup)
-        cout << p.first << " " << p.second << " " << endl;*/
-    map<HWND, WindowGroup*>::iterator it;
+        std::cout << p.first << " " << p.second << " " << endl;*/
+    std::map<HWND, WindowGroup*>::iterator it;
     for (auto it = referenceToGroup.begin(); it != referenceToGroup.end(); ) {
         if (wg == it->second) {
             it = referenceToGroup.erase(it);
@@ -510,19 +510,19 @@ void deleteWindowGroup(HWND hwnd) {
 }
 
 void SwapVisibilityForAll() {
-    vector<WindowGroup*> used;
-    map<HWND, WindowGroup*>::iterator it;
+    std::vector<WindowGroup*> used;
+    std::map<HWND, WindowGroup*>::iterator it;
 
-    vector<HWND> main;
-    vector<HWND> other;
+    std::vector<HWND> main;
+    std::vector<HWND> other;
 
     for (it = referenceToGroup.begin(); it != referenceToGroup.end(); it++) {
-        //if (IsHungAppWindow(it->first)) cout << "Hang up window 8" << endl;
+        //if (IsHungAppWindow(it->first)) std::cout << "Hang up window 8" << endl;
         if (used.empty() || !(find(used.begin(), used.end(), it->second) != used.end())) {
             WindowGroup* wg = it->second;
             main.push_back((*wg).getCurrent());
-            vector<HWND> others = (*wg).getOthers();
-            vector<HWND>::iterator iter;
+            std::vector<HWND> others = (*wg).getOthers();
+            std::vector<HWND>::iterator iter;
             for (iter = others.begin(); iter != others.end(); ++iter) {
                 other.push_back(*iter);
             }
@@ -541,21 +541,21 @@ void SwapVisibilityForAll() {
     for (auto& it : main) {
         if (!checkHungWindow(it)) {
             if (minizimed == main.size()) { // all hidden, show
-                //if (IsHungAppWindow(it)) cout << "Hang up window 4" << endl;
+                //if (IsHungAppWindow(it)) std::cout << "Hang up window 4" << endl;
                 if (IsIconic(it)) {
-                    //if (IsHungAppWindow(it)) cout << "Hang up window 5" << endl;
+                    //if (IsHungAppWindow(it)) std::cout << "Hang up window 5" << endl;
                     ShowWindow(it, SW_RESTORE);
                 }
             }
             else {
-                //if (IsHungAppWindow(it)) cout << "Hang up window 6" << endl;
+                //if (IsHungAppWindow(it)) std::cout << "Hang up window 6" << endl;
                 ShowWindow(it, SW_MINIMIZE);
             }
         }
     }
 
     for (auto& it : other) {
-        //if (IsHungAppWindow(it)) cout << "Hang up window 7" << endl;
+        //if (IsHungAppWindow(it)) std::cout << "Hang up window 7" << endl;
         if (!checkHungWindow(it)) ShowWindow(it, SW_MINIMIZE); // later add "hide" and "show" mode, after working window enumeration to get them back
     }
 }
@@ -580,14 +580,14 @@ static BOOL CALLBACK enumWindowCallback(HWND hwnd, LPARAM lparam) {
     //int length = GetWindowTextLength(hwnd); // WindowName
     //wchar_t* buffer = new wchar_t[length + 1];
     //GetWindowTextW(hwnd, buffer, length + 1);
-    //wstring ws(buffer);
+    //std::wstring ws(buffer);
 
-    wstring ws = getWindowName(hwnd);
-    string str(ws.begin(), ws.end());
+    std::wstring ws = getWindowName(hwnd);
+    std::string str(ws.begin(), ws.end());
 
     // List visible windows with a non-empty title
     //if (IsWindowVisible(hwnd) && length != 0) {
-    //    wcout << hwnd << ":  " << ws << endl;
+    //    std::wcout << hwnd << ":  " << ws << endl;
     //}
 
     //if (ws == rx_name) {
@@ -595,24 +595,24 @@ static BOOL CALLBACK enumWindowCallback(HWND hwnd, LPARAM lparam) {
     //}
     //else {
         for (auto& it : defaultFastForegroundWindows) {
-            if (str.find(it) != wstring::npos) {
-                if (!checkHungWindow(hwnd)) ShowWindow(hwnd, SW_SHOW); //cout << GetLastError() << endl;
-                //cout << "RBX HERE " << str << endl;
+            if (str.find(it) != std::wstring::npos) {
+                if (!checkHungWindow(hwnd)) ShowWindow(hwnd, SW_SHOW); //std::cout << GetLastError() << endl;
+                //std::cout << "RBX HERE " << str << endl;
             }
         }
     //}
 
     //EnumChildWindows(hwnd, enumWindowCallback, NULL); //TODO ?
-    //cout << "Good\n";
+    //std::cout << "Good\n";
 
     return TRUE;
 }
 
 void showAllRx() {
-    //cout << "Enmumerating windows..." << endl;
+    //std::cout << "Enmumerating windows..." << endl;
     hideNotMainWindows = false;
     EnumWindows(enumWindowCallback, NULL);
-    //cout << "Done\n";
+    //std::cout << "Done\n";
 }
 
 void restoreAllConnected() {
@@ -663,12 +663,12 @@ void keyReleaseInput(WORD keyCode)
     SendInput(1, &input, sizeof(INPUT));
 }
 
-void keyPressString(string key) {
+void keyPressString(std::string key) {
     interruptionManager.load()->addPendingSentInput(key);
     keyPressInput(mapOfKeys[key]);
 }
 
-void keyReleaseString(string key) {
+void keyReleaseString(std::string key) {
     keyReleaseInput(mapOfKeys[key]);
 }
 
@@ -699,7 +699,7 @@ bool pressAndUnpressAKey(HWND w, Key k) { // returns true if was paused and need
 bool performASequence(HWND w) {
     bool shouldRestartSequence = false;
     if (groupToKey.count(referenceToGroup[w])) {
-        vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
+        std::vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
         if (keys.size() > 0) {
             for (auto& el : keys) {
                 if (stopMacroInput.load()) return false;
@@ -708,14 +708,14 @@ bool performASequence(HWND w) {
             }
         }
         else {
-            cout << "You can't have no actions in a sequence! Waiting a bit instead\n"; // kostil
+            std::cout << "You can't have no actions in a sequence! Waiting a bit instead\n"; // kostil
             customSleep(100);
         }
     }
     else {
         for (auto& el : mainSequence->getKeys()) {
             if (stopMacroInput.load()) return false;
-            //cout << "Pressing\n";
+            //std::cout << "Pressing\n";
             shouldRestartSequence = pressAndUnpressAKey(w, el);
             // The macro has been interrupted and paused, and now we need to restart the entire sequence
             if (shouldRestartSequence) break;
@@ -730,8 +730,8 @@ void focusAndSendSequence(HWND hwnd) { // find this
     if (groupToKey.count(referenceToGroup[hwnd])) {
         key = groupToKey[referenceToGroup[hwnd]];
     }*/
-    //cout << "test\n";
-    //cout << "key: " << key << endl;
+    //std::cout << "test\n";
+    //std::cout << "key: " << key << endl;
 
     bool shouldRestartSequence = true;
     while (shouldRestartSequence) {
@@ -758,8 +758,8 @@ void startUsualMacroLoop() {
     while (!stopMacroInput.load()) {
         //for (int i = 0x5; i <= 0x30; i++) { // 5A
             //if (stopInput) return;
-            //cout << std::hex << key << endl;
-            //cout << std::dec;
+            //std::cout << std::hex << key << endl;
+            //std::cout << std::dec;
             //key = i;
         performInputsEverywhere();
         // 8000
@@ -772,7 +772,7 @@ void startUsualMacroLoop() {
 }
 
 void startUsualSequnceMode() {
-    currentMacroLoopThread = new thread(startUsualMacroLoop);
+    currentMacroLoopThread = new std::thread(startUsualMacroLoop);
     interruptionManager.load()->getUntilNextMacroRetryAtomic().store(0);
 }
 
@@ -782,9 +782,9 @@ void performSingleWindowedHold() {
     customSleep(macroDelayBetweenSwitchingAndFocus);
     SetFocus(w);
     customSleep(macroDelayAfterFocus);
-    string key = specialSingleWindowModeKeyCode;
+    std::string key = specialSingleWindowModeKeyCode;
     if (groupToKey.count(referenceToGroup[w])) {
-        vector<Key> allKeys = groupToKey[referenceToGroup[w]]->getKeys();
+        std::vector<Key> allKeys = groupToKey[referenceToGroup[w]]->getKeys();
         if (allKeys.size() > 0) key = allKeys[0].keyCode;
     }
     keyPressString(key);
@@ -797,9 +797,9 @@ void releaseConfiguredKey() {
     customSleep(macroDelayBetweenSwitchingAndFocus);
     SetFocus(w);
     customSleep(macroDelayAfterFocus);
-    string key = specialSingleWindowModeKeyCode;
+    std::string key = specialSingleWindowModeKeyCode;
     if (groupToKey.count(referenceToGroup[w])) {
-        vector<Key> allKeys = groupToKey[referenceToGroup[w]]->getKeys();
+        std::vector<Key> allKeys = groupToKey[referenceToGroup[w]]->getKeys();
         if (allKeys.size() > 0) key = allKeys[0].keyCode;
     }
     keyReleaseString(key);
@@ -807,11 +807,11 @@ void releaseConfiguredKey() {
 
 void toggleMacroState() {
     if (referenceToGroup.size() == 0) {
-        cout << "You haven't linked any windows yet!\n";
+        std::cout << "You haven't linked any windows yet!\n";
     }
     else if (stopMacroInput.load()) {
         stopMacroInput.store(false);
-        cout << "Starting...\n";
+        std::cout << "Starting...\n";
         if (specialSingleWindowModeEnabled && referenceToGroup.size() == 1) {
             performSingleWindowedHold();
         }
@@ -822,7 +822,7 @@ void toggleMacroState() {
     else {
         stopMacroInput.store(true);
         if (referenceToGroup.size() == 1) releaseConfiguredKey();
-        cout << "Stopped\n";
+        std::cout << "Stopped\n";
     }
 }
 
@@ -843,27 +843,27 @@ void distributeRxHwndsToGroups(HWND hwnd) {
     RECT r = { NULL };
     bool openCmdLater = false;
     if (IsIconic(hwnd)) {
-        //if (IsHungAppWindow(hwnd)) cout << "Hang up window 3'" << endl;
+        //if (IsHungAppWindow(hwnd)) std::cout << "Hang up window 3'" << endl;
         ShowWindow(hwnd, SW_RESTORE); // didn't put MINIMIZE before and without if statement bc this entire piece of code is more like a workaround than a feature
-        //if (IsHungAppWindow(hwnd)) cout << "Hang up window 4'" << endl;
+        //if (IsHungAppWindow(hwnd)) std::cout << "Hang up window 4'" << endl;
         if (!IsIconic(GetConsoleWindow())) {
-            //if (IsHungAppWindow(hwnd)) cout << "Hang up window 5'" << endl;
+            //if (IsHungAppWindow(hwnd)) std::cout << "Hang up window 5'" << endl;
             openCmdLater = true;
         }
     }
     customSleep(1);
     DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &r, sizeof(RECT));
     // GetWindowRect(hwnd, &r)
-    //cout << r.left << " " << r.top << " " << r.right << " " << r.bottom << " " << endl;
+    //std::cout << r.left << " " << r.top << " " << r.right << " " << r.bottom << " " << endl;
 
     RECT desktop;
     SystemParametersInfo(SPI_GETWORKAREA, 0, &desktop, 0);
     int desktopX = desktop.right;
     int desktopY = desktop.bottom;
 
-    //if (IsHungAppWindow(hwnd)) cout << "Hang up window 3" << endl;
+    //if (IsHungAppWindow(hwnd)) std::cout << "Hang up window 3" << endl;
     //if (r.left == -7 && r.top == 0 && r.right == 967 && r.bottom == 527) autoGroup1.push_back(hwnd); // Explorer window
-    //cout << r.right - r.left << "   " << r.bottom - r.top << endl;
+    //std::cout << r.right - r.left << "   " << r.bottom - r.top << endl;
     if (r.right - r.left == desktopX / 2 && (r.bottom - r.top == 638 || r.bottom - r.top == 631)) { // 631 is considered as height when at the top, check on different Windows versions and
         if (r.left == 0 && r.top == 0) autoGroup1.push_back(hwnd); // actual sizes         // find out which one doesn't work and change to + or - border size //TODO
         else if (r.left == desktopX / 2 && r.top == 0) autoGroup2.push_back(hwnd);
@@ -872,7 +872,7 @@ void distributeRxHwndsToGroups(HWND hwnd) {
     }
 
     if (openCmdLater) {
-        /*cout << "restoring\n";
+        /*std::cout << "restoring\n";
         customSleep(1);
         if(IsIconic(GetConsoleWindow())) ShowWindow(GetConsoleWindow(), SW_RESTORE);*/
     }
@@ -882,19 +882,19 @@ static BOOL CALLBACK rxConnectivityCallback(HWND hwnd, LPARAM lparam) {
     //int length = GetWindowTextLength(hwnd); // WindowName
     //wchar_t* buffer = new wchar_t[length + 1];
     //GetWindowTextW(hwnd, buffer, length + 1);
-    //wstring ws(buffer);
-    //string str(ws.begin(), ws.end());
+    //std::wstring ws(buffer);
+    //std::string str(ws.begin(), ws.end());
 
     //if(IsWindowVisible(hwnd))
     // 
-    //wcout << "\"" << ws << "\"" << endl;
-    //cout << str << endl;
+    //std::wcout << "\"" << ws << "\"" << endl;
+    //std::cout << str << endl;
 
-    wstring ws = getWindowName(hwnd);
+    std::wstring ws = getWindowName(hwnd);
 
     if (ws == rx_name) { // ws == L"HangApp"
         distributeRxHwndsToGroups(hwnd);
-        //cout << "Found!\n";
+        //std::cout << "Found!\n";
     }
 
     //EnumChildWindows(hwnd, enumWindowCallback, NULL); //TODO ?
@@ -905,10 +905,10 @@ static BOOL CALLBACK rxConnectivityCompletelyAllCallback(HWND hwnd, LPARAM lpara
     //int length = GetWindowTextLength(hwnd); // Window Name
     //wchar_t* buffer = new wchar_t[length + 1];
     //GetWindowTextW(hwnd, buffer, length + 1);
-    //wstring ws(buffer);
-    wstring ws = getWindowName(hwnd);
+    //std::wstring ws(buffer);
+    std::wstring ws = getWindowName(hwnd);
 
-    //string str(ws.begin(), ws.end());
+    //std::string str(ws.begin(), ws.end());
 
     if (ws == rx_name) {
         addWindowNoMatterWhat(hwnd);
@@ -917,14 +917,14 @@ static BOOL CALLBACK rxConnectivityCompletelyAllCallback(HWND hwnd, LPARAM lpara
     return TRUE;
 }
 
-int createSingleConnectedGroup(vector<HWND>* windows) {
+int createSingleConnectedGroup(std::vector<HWND>* windows) {
     if (windows->size() == 0) return 0;
     WindowGroup* wg;
     wg = new WindowGroup();
     int amount = 0;
     for (auto& w : *windows) {
         if (referenceToGroup.count(w)) {
-            map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(w);
+            std::map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(w);
             referenceToGroup.find(w)->second->removeWindow(w);
             //referenceToGroup.erase(referenceToGroup.find(w));
         }
@@ -951,36 +951,36 @@ int createConnectedGroupsForCompletelyAll() {
 }
 
 void connectAllQuarters() {
-    cout << "Connecting RBX windows..." << endl;
+    std::cout << "Connecting RBX windows...\n";
     autoGroup1.clear(); autoGroup2.clear(); autoGroup3.clear(); autoGroup4.clear();
     currentHangWindows = 0;
     EnumWindows(rxConnectivityCallback, NULL);
-    if (currentHangWindows > 0) cout << "Found " << currentHangWindows << " window(s) that isn't (aren't) responding, skipping them" << endl;
+    if (currentHangWindows > 0) std::cout << "Found " << currentHangWindows << " window(s) that isn't (aren't) responding, skipping them\n";
     int amount = createConnectedGroups();
     if (amount > 0) {
-        cout << "Successfully connected " << amount << " window";
-        if (amount > 1) cout << "s";
-        cout << endl;
+        std::cout << "Successfully connected " << amount << " window";
+        if (amount > 1) std::cout << "s";
+        std::cout << '\n';
     }
     else {
-        cout << "Didn't find any matching windows!" << endl;
+        std::cout << "Didn't find any matching windows!\n";
     }
 }
 
 void connectAllRbxsNoMatterWhat() {
-    cout << "Connecting Absolutely all RBX windows..." << endl;
+    std::cout << "Connecting Absolutely all RBX windows...\n";
     autoGroupAllWindows.clear();
     currentHangWindows = 0;
     EnumWindows(rxConnectivityCompletelyAllCallback, NULL);
-    if (currentHangWindows > 0) cout << "Found " << currentHangWindows << " window(s) that isn't (aren't) responding, skipping them" << endl;
+    if (currentHangWindows > 0) std::cout << "Found " << currentHangWindows << " window(s) that isn't (aren't) responding, skipping them\n";
     int amount = createConnectedGroupsForCompletelyAll();
     if (amount > 0) {
-        cout << "Successfully connected " << amount << " RBX window";
-        if (amount > 1) cout << "s";
-        cout << endl;
+        std::cout << "Successfully connected " << amount << " RBX window";
+        if (amount > 1) std::cout << "s";
+        std::cout << std::endl;
     }
     else {
-        cout << "Didn't find any RBX windows!" << endl;
+        std::cout << "Didn't find any RBX windows!" << std::endl;
     }
 }
 
@@ -997,8 +997,8 @@ void windowPosTest(HWND hwnd, int type) {
     RECT p;
     GetWindowRect(hwnd, &p);
     //RECT p = WINDOWPLACEMENT;
-    cout << p.left << " " << p.top << endl;
-    cout << p.right << " " << p.bottom << endl;
+    std::cout << p.left << " " << p.top << '\n';
+    std::cout << p.right << " " << p.bottom << '\n';
     // -7, 0, 967, 638     // 953, 0, 1927, 638     // -7, 402, 967, 1047     // 953, 402, 1927, 1047
     //if (type == 1) { SetWindowPos(hwnd, NULL, -7, 0, 974, 638, NULL); }
     //else if (type == 2) { SetWindowPos(hwnd, NULL, 953, 0, 974, 638, NULL); } // 1390
@@ -1013,24 +1013,24 @@ void windowPosTest(HWND hwnd, int type) {
     RECT p2;
     GetWindowRect(hwnd, &p2);
     //RECT p = WINDOWPLACEMENT;
-    cout << p2.left << " " << p2.top << endl;
-    cout << p2.right << " " << p2.bottom << endl;
+    std::cout << p2.left << " " << p2.top << '\n';
+    std::cout << p2.right << " " << p2.bottom << '\n';
 
-    cout << endl;
+    std::cout << '\n';
     //SetWindowPlacement(hwnd,
 }
 
 void hideForgr() {
     HWND h = GetForegroundWindow();
-    //wstring name = getWindowName(h);
-    //wcout << h << endl;
-    //cout << (h == FindWindow(L"Shell_TrayWnd", NULL)) << endl;
-    //cout << (h == FindWindow(L"ToolbarWindow32", L"Running Applications")) << endl;
-    //cout << (h == FindWindow(L"SysTabControl32", NULL)) << endl;
-    //wcout << getWindowName(GetParent(h)) << endl;
-    //cout << (curHwnd == GetDesktopWindow());
+    //std::wstring name = getWindowName(h);
+    //std::wcout << h << endl;
+    //std::cout << (h == FindWindow(L"Shell_TrayWnd", NULL)) << endl;
+    //std::cout << (h == FindWindow(L"ToolbarWindow32", L"Running Applications")) << endl;
+    //std::cout << (h == FindWindow(L"SysTabControl32", NULL)) << endl;
+    //std::wcout << getWindowName(GetParent(h)) << endl;
+    //std::cout << (curHwnd == GetDesktopWindow());
     if (h != FindWindow("Shell_TrayWnd", NULL) && !checkHungWindow(h)) ShowWindow(h, SW_HIDE); // taskbar, other desktop components get back on their own
-    //get back from vector somehow, maybe input
+    //get back from std::vector somehow, maybe input
 }
 
 static BOOL CALLBACK fgCustonWindowCallback(HWND hwnd, LPARAM lparam) {
@@ -1039,15 +1039,15 @@ static BOOL CALLBACK fgCustonWindowCallback(HWND hwnd, LPARAM lparam) {
     //int length = GetWindowTextLength(hwnd); // WindowName
     //wchar_t* buffer = new wchar_t[length + 1];
     //GetWindowTextW(hwnd, buffer, length + 1);
-    //wstring ws(buffer);
+    //std::wstring ws(buffer);
 
-    wstring ws = getWindowName(hwnd);
+    std::wstring ws = getWindowName(hwnd);
 
-    if (ws == customReturnToFgName || (ws.find(customReturnToFgName) != wstring::npos)) {
+    if (ws == customReturnToFgName || (ws.find(customReturnToFgName) != std::wstring::npos)) {
         if (!checkHungWindow(hwnd)) {
-            if (!ShowWindow(hwnd, SW_SHOW)) cout << GetLastError() << endl;
+            if (!ShowWindow(hwnd, SW_SHOW)) std::cout << GetLastError() << '\n';
             if (!IsWindowVisible(hwnd)) {
-                ShowWindow(hwnd, SW_RESTORE); // cout << GetLastError() << endl;
+                ShowWindow(hwnd, SW_RESTORE); // std::cout << GetLastError() << endl;
             }
             restoredCustomWindowsAmount++;
         }
@@ -1072,49 +1072,49 @@ void getFromBackgroundSpecific() {
 
     SetForegroundWindow(GetConsoleWindow());
     restoredCustomWindowsAmount = 0;
-    wstring targetName = L"";
-    wstring checkEmpty = L"";
-    wcout << "Enter the text (Eng only):\n";
-    getline(wcin, targetName);
-    //wcout << "Entered: '" << targetName << "'" << endl;
+    std::wstring targetName = L"";
+    std::wstring checkEmpty = L"";
+    std::wcout << "Enter the text (Eng only):\n";
+    std::getline(std::wcin, targetName);
+    //std::wcout << "Entered: '" << targetName << "'" << endl;
 
     checkEmpty = targetName;
 
     checkEmpty.erase(std::remove(checkEmpty.begin(), checkEmpty.end(), ' '), checkEmpty.end());
 
-    //wcout << "\"" << checkEmpty << "\"\n";
+    //std::wcout << "\"" << checkEmpty << "\"\n";
     if (checkEmpty != L"") {
         customReturnToFgName = targetName;
     }
-    //else if (customFgName != L"") cout << "Using the previous window name\n";
+    //else if (customFgName != L"") std::cout << "Using the previous window name\n";
     //else {
-    //    cout << "The input data is incorrect" << endl;
+    //    std::cout << "The input data is incorrect" << endl;
     //}
     EnumWindows(fgCustonWindowCallback, NULL);
-    if (restoredCustomWindowsAmount == 1) cout << "Success\n";
-    else cout << "Couldn't find such window!\n";
+    if (restoredCustomWindowsAmount == 1) std::cout << "Success\n";
+    else std::cout << "Couldn't find such window!\n";
 }
 
 void setGroupKey(HWND h) {
     if (referenceToGroup.count(h)) {
         SetForegroundWindow(GetConsoleWindow());
-        cout << "Enter the key (Eng only, lowercase, no combinations) or the extra sequence name with \"!\" in the beggining:\n";
-        string keyName = "";
-        getline(cin, keyName);
+        std::cout << "Enter the key (Eng only, lowercase, no combinations) or the extra sequence name with \"!\" in the beggining:\n";
+        std::string keyName = "";
+        std::getline(std::cin, keyName);
         if (keyName.rfind("!", 0) == 0 && groupToKey.count(referenceToGroup[h])) {
             groupToKey[referenceToGroup[h]] = knownOtherSequences[keyName.substr(1)];
         }
         else if (mapOfKeys.count(keyName)) {
             groupToKey[referenceToGroup[h]] = &KeySequence(keyName); // then use as mapOfKeys[keyName] // important comment
-            cout << "Set the key for that group" << endl;
+            std::cout << "Set the key for that group" << std::endl;
             SetForegroundWindow(h);
         }
         else {
-            cout << "Such key (or sequence name) doesn't esist or isn't supported yet!" << endl;
+            std::cout << "Such key (or sequence name) doesn't esist or isn't supported yet!" << std::endl;
         }
     }
     else {
-        cout << "No window group is focused!" << endl;
+        std::cout << "No window group is focused!" << std::endl;
     }
 }
 
@@ -1159,7 +1159,7 @@ void resetInterruptionManager(const YAML::Node& config) {
         delete interruptionManager;
         interruptionManager = nullptr;
     }
-    //cout << "resetInterruptionManager\n";
+    //std::cout << "resetInterruptionManager\n";
 }
 
 void rememberInitialPermanentSettings() {
@@ -1195,7 +1195,7 @@ void readSimpleInteruptionManagerSettings(const YAML::Node& config) {
 void readNewInterruptionManager(const YAML::Node& config) {
     resetInterruptionManager(config);
     interruptionManager = new InputsInterruptionManager();
-    //cout << "readNewInterruptionManager\n";
+    //std::cout << "readNewInterruptionManager\n";
 
     interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases"), KEYBOARD);
     interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases"), MOUSE);
@@ -1203,7 +1203,7 @@ void readNewInterruptionManager(const YAML::Node& config) {
 
     readSimpleInteruptionManagerSettings(config);
 
-    //cout << interruptionManager << '\n';
+    //std::cout << interruptionManager << '\n';
     //if (macroDelayWatcherThread != nullptr) {
         //macroDelayWatcherThread->
     //}
@@ -1213,7 +1213,7 @@ void readNewInterruptionManager(const YAML::Node& config) {
 void readDefaultInterruptionManager(const YAML::Node& config) {
     resetInterruptionManager(config);
     interruptionManager = new InputsInterruptionManager();
-    //cout << "readDefaultInterruptionManager\n";
+    //std::cout << "readDefaultInterruptionManager\n";
 
     interruptionManager.load()->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(KEYBOARD), KEYBOARD);
     interruptionManager.load()->initType(*InputsInterruptionManager::getDefaultInterruptionConfigsList(MOUSE), MOUSE);
@@ -1248,7 +1248,7 @@ void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig) {
     list.push_back(keyExample);
 
     setConfigValue(config, "settings/macro/mainKeySequence", getDefaultSequenceList());
-    if(!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", vector<YAML::Node>());
+    if(!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", std::vector<YAML::Node>());
     removeConfigValue(config, "settings/macro/delaysInMilliseconds");
     removeConfigValue(config, "settings/macro/justHoldWhenSingleWindow");
     removeConfigValue(config, "settings/macro/defaultKey", true);
@@ -1259,7 +1259,7 @@ enum ConfigType {
     KEYBINDS_CONFIG
 };
 
-string configTypeToString(ConfigType type) {
+std::string configTypeToString(ConfigType type) {
     switch (type)
     {
     case MAIN_CONFIG:
@@ -1273,11 +1273,11 @@ string configTypeToString(ConfigType type) {
 
 YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConfig) {
     if (!wasEmpty) {
-        string oldConfigVersion;
+        std::string oldConfigVersion;
         YAML::Node versionData;
         try {
             versionData = getConfigValue(config, "internal/configVersion");
-            oldConfigVersion = versionData.as<string>();
+            oldConfigVersion = versionData.as<std::string>();
         }
         catch (const YAML::Exception& e) {
             oldConfigVersion = "2.0";
@@ -1319,7 +1319,7 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
     }
 
     // extra sequences
-    if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", vector<YAML::Node>());
+    if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", std::vector<YAML::Node>());
     YAML::Node extraSequences = getConfigValue(config, "settings/macro/extraKeySequences");
     if (extraSequences.IsMap()) {
         //for (auto& otherSeq : knownOtherSequences) {
@@ -1327,7 +1327,7 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         //}
         knownOtherSequences.clear();
         for (YAML::const_iterator at = extraSequences.begin(); at != extraSequences.end(); at++) {
-            knownOtherSequences[at->first.as<string>()] = new KeySequence(at->second);
+            knownOtherSequences[at->first.as<std::string>()] = new KeySequence(at->second);
         }
     }
 
@@ -1339,7 +1339,7 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         bool nothingMouse = interruptionManager.load()->getConfigurations(MOUSE)->size() == 0;
         // if there is nothing
         if (nothingKeyboard || nothingMouse) {
-            //cout << "Nothing\n";
+            //std::cout << "Nothing\n";
             // set default values
             YAML::Node* defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(KEYBOARD);
             if (nothingKeyboard) setConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases", *defaultList);
@@ -1362,7 +1362,7 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         readDefaultInterruptionManager(config);
     }
 
-    vector<string> localDefaultFastForegroundWindows;
+    std::vector<std::string> localDefaultFastForegroundWindows;
     localDefaultFastForegroundWindows.push_back("Roblox");
     localDefaultFastForegroundWindows.push_back("VMware Workstation");
     defaultFastForegroundWindows = getConfigVectorString(config, "settings/fastReturnToForegroundWindows", localDefaultFastForegroundWindows);
@@ -1374,8 +1374,8 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
 
 bool loadConfig(ConfigType type) {
     try {
-        string folderPath = "WindowSwitcherSettings";
-        string fileName;
+        std::string folderPath = "WindowSwitcherSettings";
+        std::string fileName;
         switch (type)
         {
         case MAIN_CONFIG:
@@ -1385,7 +1385,7 @@ bool loadConfig(ConfigType type) {
             fileName = "keybindings.yml";
             break;
         default:
-            cout << "Unsupported config type\n";
+            std::cout << "Unsupported config type\n";
             return false;
         }
         YAML::Node config;
@@ -1407,7 +1407,7 @@ bool loadConfig(ConfigType type) {
             wrongConfig = true;
         }*/
         catch (const YAML::Exception& e) {
-            addConfigLoadingMessage("WARNING | UNKNOWN ERROR WHILE LOADING " + configTypeToString(type) + " CONFIG!\nERROR TEXT | " + string(e.what()));
+            addConfigLoadingMessage("WARNING | UNKNOWN ERROR WHILE LOADING " + configTypeToString(type) + " CONFIG!\nERROR TEXT | " + std::string(e.what()));
             config = YAML::Node();
             wrongConfig = true;
         }
@@ -1427,7 +1427,7 @@ bool loadConfig(ConfigType type) {
             newConfig = loadKeybindingsConfig(config, wasEmpty, wrongConfig);
             break;
         default:
-            cout << "Unsupported config type\n";
+            std::cout << "Unsupported config type\n";
             return false;
         }
 
@@ -1439,13 +1439,13 @@ bool loadConfig(ConfigType type) {
         return true;
     }
     catch (const YAML::Exception& e) {
-        addConfigLoadingMessage("WARNING | A completely unexpected YAML::Exception error happened while loading the config:\nERROR | " + string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
+        addConfigLoadingMessage("WARNING | A completely unexpected YAML::Exception error happened while loading the config:\nERROR | " + std::string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
     }
     catch (const std::exception& e) {
-        addConfigLoadingMessage("WARNING | A completely unexpected std::exception error happened while loading the config:\nERROR | " + string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
+        addConfigLoadingMessage("WARNING | A completely unexpected std::exception error happened while loading the config:\nERROR | " + std::string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
     }
     catch (const YAML::BadConversion& e) {
-        addConfigLoadingMessage("WARNING | A completely unexpected YAML::BadConversion error happened while loading the config:\nERROR | " + string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
+        addConfigLoadingMessage("WARNING | A completely unexpected YAML::BadConversion error happened while loading the config:\nERROR | " + std::string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
     }
 }
 
@@ -1455,18 +1455,18 @@ void reloadConfigs() {
 }
 
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
-    //cout << interruptionManager.load()->isModeEnabled().load();
+    //std::cout << interruptionManager.load()->isModeEnabled().load();
     if (interruptionManager != nullptr && interruptionManager.load()->isModeEnabled().load()) { // interruptionManager.load()->getModeEnabled().load()
         if (nCode >= 0) {
             bool ignore = false;
 
-            //cout << interruptionManager.load()->getConfigurations(KEYBOARD)->size() << '\n';
-            //cout << interruptionManager.load()->getConfigurations(MOUSE)->size() << '\n';
+            //std::cout << interruptionManager.load()->getConfigurations(KEYBOARD)->size() << '\n';
+            //std::cout << interruptionManager.load()->getConfigurations(MOUSE)->size() << '\n';
 
             int key = reinterpret_cast<LPKBDLLHOOKSTRUCT>(lParam)->vkCode;
             if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN || wParam == WM_CHAR) {
 
-                string formattedKey;
+                std::string formattedKey;
                 KBDLLHOOKSTRUCT* pkbhs = (KBDLLHOOKSTRUCT*)lParam;
                 
                 bool isCharInput = (pkbhs->vkCode >= 'A' && pkbhs->vkCode <= 'Z') ||
@@ -1482,7 +1482,7 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                     int intForm = (int)pkbhs->vkCode;
                     formattedKey = std::to_string(intForm);
 
-                    //cout << "{\"" << intForm << "\", " << ParseHotkeyCode(formattedKey) << "},\n";
+                    //std::cout << "{\"" << intForm << "\", " << ParseHotkeyCode(formattedKey) << "},\n";
 
                     if (keyboardHookSpecialVirtualKeyCodeToText.count(intForm) > 0) {
                         formattedKey = keyboardHookSpecialVirtualKeyCodeToText[intForm];
@@ -1609,13 +1609,13 @@ void macroDelayModificationLoop() {
         //std::cout << "";
         if (interruptionManager != nullptr && interruptionManager.load()->isModeEnabled().load()) {
             int curValue = interruptionManager.load()->getUntilNextMacroRetryAtomic().load();
-            //cout << curValue << endl;
+            //std::cout << curValue << endl;
 
             curValue -= 1;
             if (curValue == 0) {
                 storeCurDelay(curValue);
                 notifyTheMacro();
-                if(interruptionManager.load()->getInformOnEvents() && !getStopMacroInput().load()) cout << "Unpaused\n";
+                if(interruptionManager.load()->getInformOnEvents() && !getStopMacroInput().load()) std::cout << "Unpaused\n";
                 
             }
             else {
@@ -1637,7 +1637,7 @@ void terminationOnFailure() {
         }
     }
 
-    cout << "[!!!] The application encountered an error that it doesn't want to ingnore, so it has exited." << endl;
+    std::cout << "[!!!] The application encountered an error that it doesn't want to ingnore, so it has exited." << std::endl;
     _getch();
     ExitProcess(1);
 }
@@ -1687,7 +1687,7 @@ int actualMain(int argc, char* argv[]) {
 
     /*int a = 0;
     int b = 0;
-    cout << a / b;*/
+    std::cout << a / b;*/
 
     setlocale(0, "");
     programPath = argv[0];
@@ -1707,7 +1707,7 @@ int actualMain(int argc, char* argv[]) {
     if (interruptionManager.load()->getShouldStartKeyboardHook().load()) {
         keyboardHookThread = new std::thread(keyboardHookFunc);
         keyboardHookThread->detach();
-        //cout << "Priority " << GetThreadPriority(keyboardHook) << endl;
+        //std::cout << "Priority " << GetThreadPriority(keyboardHook) << endl;
         //SetThreadPriority(keyboardHook, THREAD_PRIORITY_HIGHEST);
     }
     if (interruptionManager.load()->getShouldStartMouseHook().load()) {
@@ -1715,11 +1715,11 @@ int actualMain(int argc, char* argv[]) {
         mouseHookThread->detach();
     }
 
-    if (debugMode) cout << "[! DEBUG MODE !]\n\n";
+    if (debugMode) std::cout << "[! DEBUG MODE !]\n\n";
 
     //UINT VKCode = LOBYTE(VkKeyScan('e'));
     //UINT ScanCode = MapVirtualKey(VKCode, 0);
-    //cout << ScanCode << endl; // VkKeyScan('e') // wscanf_s(L"a")
+    //std::cout << ScanCode << endl; // VkKeyScan('e') // wscanf_s(L"a")
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0) != 0) {
         TranslateMessage(&msg);
@@ -1728,8 +1728,8 @@ int actualMain(int argc, char* argv[]) {
         if (msg.message == WM_HOTKEY) {
             checkClosedWindows();
             HWND curHwnd = GetForegroundWindow();
-            //cout << "curHwnd = " << curHwnd << endl;
-            //cout << msg.wParam << endl;
+            //std::cout << "curHwnd = " << curHwnd << endl;
+            //std::cout << msg.wParam << endl;
             if (msg.wParam == 1) {
                 if (curHwnd != GetConsoleWindow()) {
                     if (lastGroup == NULL) {
@@ -1823,24 +1823,24 @@ int actualMain(int argc, char* argv[]) {
                 }
             }
             if (msg.wParam == 20) { // debug
-                //cout << ((&referenceToGroup==NULL) || referenceToGroup.size()) << endl;
+                //std::cout << ((&referenceToGroup==NULL) || referenceToGroup.size()) << endl;
                 if (referenceToGroup.size() > 0) {
-                    //cout << "The group and size (make sure not console): ";
-                    //if (referenceToGroup.count(curHwnd)) cout << (referenceToGroup.find(curHwnd)->second) << " " << (*(referenceToGroup.find(curHwnd)->second)).size() << endl;
+                    //std::cout << "The group and size (make sure not console): ";
+                    //if (referenceToGroup.count(curHwnd)) std::cout << (referenceToGroup.find(curHwnd)->second) << " " << (*(referenceToGroup.find(curHwnd)->second)).size() << endl;
 
-                    cout << "Current HWND->WindowGroup* map:" << endl;
+                    std::cout << "Current HWND->WindowGroup* std::map:\n";
                     for (const auto& it : referenceToGroup) {
-                        cout << it.first << " " << it.second;
-                        if (it.first == curHwnd) cout << " (Current)";
-                        cout << endl;
+                        std::cout << it.first << " " << it.second;
+                        if (it.first == curHwnd) std::cout << " (Current)";
+                        std::cout << '\n';
                     }
                 }
             }
             if (msg.wParam == 21) { // real debug
-                cout << "Waiting2...\n";
+                std::cout << "Waiting2...\n";
                 //macroWaitLock = std::unique_lock<std::mutex>(macroWaitMutex);
                 macroWaitCv.wait(macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
-                cout << "Done2\n";
+                std::cout << "Done2\n";
             }
             hungWindowsAnnouncement();
         }

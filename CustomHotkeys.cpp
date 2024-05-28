@@ -7,20 +7,20 @@
 #include "ConfigOperations.h"
 
 struct KeybindInfo;
-std::atomic<vector<KeybindInfo>*> activeKeybinds = nullptr;
+std::atomic<std::vector<KeybindInfo>*> activeKeybinds = nullptr;
 
-vector<KeybindInfo>* getActiveKeybinds() {
+std::vector<KeybindInfo>* getActiveKeybinds() {
     return activeKeybinds.load();
 }
 
 struct KeybindInfo {
     int id;
-    string hotkey;
-    string internalName;
-    string description;
+    std::string hotkey;
+    std::string internalName;
+    std::string description;
     bool hidden = false;
 
-    KeybindInfo(int id, string hotkey, string internalName, string description) {
+    KeybindInfo(int id, std::string hotkey, std::string internalName, std::string description) {
         this->id = id;
         this->hotkey = hotkey;
         this->internalName = internalName;
@@ -40,7 +40,7 @@ struct KeybindInfo {
         return node;
     }
 
-    string toString() {
+    std::string toString() {
         std::stringstream ss;
         ss << "{id=" << this->id << ", internalName=" << this->internalName << ", hotkey=" << hotkey << ", description=" << description << "}";
         return ss.str();
@@ -213,7 +213,7 @@ WORD ParseHotkeyCode(const std::string& hotKeyText) {
         i--;
     }
 
-    string key = hotKeyText.substr(i + 1, end - i);
+    std::string key = hotKeyText.substr(i + 1, end - i);
 
     //cout << i << ' ' << end << ' ' << key << '\n';
     
@@ -249,7 +249,7 @@ std::string capitalizeFirstLetter(const std::string& word) {
     return capitalizedWord;
 }
 
-string makeHkStringPretty(string& hotkey) {
+std::string makeHkStringPretty(std::string& hotkey) {
     std::istringstream iss(hotkey);
     std::string word;
     std::stringstream ss;
@@ -275,7 +275,7 @@ string makeHkStringPretty(string& hotkey) {
 }
 
 bool RegisterHotKeyFromText(std::vector<std::string>& failedHotkeys, KeybindInfo& info) {
-    string hotKeyStr = info.hotkey;
+    std::string hotKeyStr = info.hotkey;
     // Lowercase
     std::transform(hotKeyStr.begin(), hotKeyStr.end(), hotKeyStr.begin(), ::tolower);
     // Removing pluses
@@ -306,8 +306,8 @@ bool RegisterHotKeyFromText(std::vector<std::string>& failedHotkeys, KeybindInfo
     }
 }
 
-vector<KeybindInfo>* getDefaultKeybinds() {
-    vector<KeybindInfo>* result = new vector<KeybindInfo>;
+std::vector<KeybindInfo>* getDefaultKeybinds() {
+    std::vector<KeybindInfo>* result = new std::vector<KeybindInfo>;
     result->push_back(KeybindInfo(1, "Alt + ,", "addToGroup", "Add window to current group"));
     result->push_back(KeybindInfo(2, "Alt + .", "deselectGroup", "Prepare for the next group"));
     result->push_back(KeybindInfo(11, "Alt + I", "selectGroup", "Edit the window's group"));
@@ -342,9 +342,9 @@ vector<KeybindInfo>* getDefaultKeybinds() {
     return result;
 }
 
-//vector<YAML::Node>* getDefaultKeybindsList() {
-//    vector<KeybindInfo>* raw = getDefaultKeybinds();
-//    vector<YAML::Node>* result = new vector<YAML::Node>();
+//std::vector<YAML::Node>* getDefaultKeybindsList() {
+//    std::vector<KeybindInfo>* raw = getDefaultKeybinds();
+//    std::vector<YAML::Node>* result = new std::vector<YAML::Node>();
 //
 //    for (auto& keybind : raw) {
 //        result->push_back(*keybind.toNode());
@@ -365,13 +365,13 @@ void resetActiveKeybinds() {
 
 void readNewKeybinds(YAML::Node& config) {
     resetActiveKeybinds();
-    vector<KeybindInfo>* raw = getDefaultKeybinds();
-    vector<KeybindInfo>* result; // I don't want to make it vector<KeybindInfo*>* and clear all of that every time
+    std::vector<KeybindInfo>* raw = getDefaultKeybinds();
+    std::vector<KeybindInfo>* result; // I don't want to make it std::vector<KeybindInfo*>* and clear all of that every time
     for (KeybindInfo info : *raw) {
         YAML::Node* node = info.toNode();
         YAML::Node userNode = getConfigValue(config, "keybindings/specific/" + info.internalName);
         if (userNode.IsDefined()) {
-            string userHotkey = getConfigString(userNode, "hotkey", info.hotkey);
+            std::string userHotkey = getConfigString(userNode, "hotkey", info.hotkey);
             setConfigValue(*node, "hotkey", userHotkey);
             info.hotkey = userHotkey;
             //cout << info.hotkey << "\n";
@@ -392,11 +392,11 @@ void readDefaultKeybindsNoModification(YAML::Node& config) {
 
 YAML::Node& loadKeybindingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConfig) {
     if (!wasEmpty) {
-        string oldConfigVersion;
+        std::string oldConfigVersion;
         YAML::Node versionData;
         try {
             versionData = getConfigValue(config, "internal/configVersion");
-            oldConfigVersion = versionData.as<string>();
+            oldConfigVersion = versionData.as<std::string>();
         }
         catch (const YAML::Exception& e) {
             oldConfigVersion = "2.2";
@@ -426,6 +426,6 @@ void helpGenerateKeyMap() {
     for (char c : allKeyboardCharacters) {
         std::string hotKeyText(1, c);
         WORD result = ParseHotkeyCode(hotKeyText);
-        cout << "{\"" << hotKeyText << "\", " << result << "},\n";
+        std::cout << "{\"" << hotKeyText << "\", " << result << "},\n";
     }
 }

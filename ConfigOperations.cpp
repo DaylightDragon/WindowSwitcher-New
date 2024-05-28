@@ -1,5 +1,3 @@
-using namespace std;
-
 #include "WindowSwitcherNew.h"
 #include "GeneralUtils.h"
 #include <yaml-cpp/yaml.h>
@@ -16,7 +14,7 @@ using namespace std;
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <experimental/filesystem>
 
-string configLoadingMessages = "";
+std::string configLoadingMessages = "";
 namespace fs = std::experimental::filesystem;
 
 #ifdef _WIN32
@@ -53,14 +51,14 @@ bool createDirectories(const std::string& path) {
     return false;
 }
 
-void addConfigLoadingMessage(string message) {
+void addConfigLoadingMessage(std::string message) {
     if (!configLoadingMessages.empty()) configLoadingMessages += "\n";
     configLoadingMessages += message;
 }
 
 void printConfigLoadingMessages() {
     if (!configLoadingMessages.empty()) {
-        cout << "Loading config messages:" << endl << configLoadingMessages << endl << endl;
+        std::cout << "Loading config messages:\n" << configLoadingMessages << "\n\n";
         configLoadingMessages = "";
     }
 }
@@ -99,7 +97,7 @@ public:
         }*/
 };
 
-YAML::Node loadYaml(string programPath, const std::string& folderPath, const std::string& fileName, bool& wrongConfig) {
+YAML::Node loadYaml(std::string programPath, const std::string& folderPath, const std::string& fileName, bool& wrongConfig) {
     //struct stat info;
     //if (stat(directory.c_str(), &info) != 0) {
     //    // Create the directory
@@ -141,30 +139,30 @@ YAML::Node loadYaml(string programPath, const std::string& folderPath, const std
 
     //std::ifstream file(fileName);
     //if (!file) {
-        //cout << "Can't open the Yaml" << endl;
+        //std::cout << "Can't open the Yaml" << endl;
     //}
 
-    string folderFullPath = getProgramFolderPath(programPath) + "/" + folderPath;
-    string fullPath = getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName;
+    std::string folderFullPath = getProgramFolderPath(programPath) + "/" + folderPath;
+    std::string fullPath = getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName;
 
     if (getProgramFolderPath(programPath) == "C:\Windows\System32") {
-        cout << "The program was launched in System32!" << endl; // idk if the path is the working direcotry, but I had such issues in Java
+        std::cout << "The program was launched in System32!" << std::endl; // idk if the path is the working direcotry, but I had such issues in Java
     }
 
     if (!fs::is_directory(folderFullPath) || !fs::exists(folderFullPath)) { // Check if src folder exists
         fs::create_directory(folderFullPath); // create src folder
     }
 
-    ifstream fileTest(fullPath);
+    std::ifstream fileTest(fullPath);
     if (!fileTest) {
-        fstream file;
-        file.open(folderPath + "/" + fileName, fstream::out);
+        std::fstream file;
+        file.open(folderPath + "/" + fileName, std::fstream::out);
         file.close();
     }
 
     std::ifstream file2(fullPath);
     //if (!file2) {
-    //    cout << "Can't open the Yaml" << endl;
+    //    std::cout << "Can't open the Yaml" << endl;
     //}
 
     YAML::Node config;
@@ -172,21 +170,21 @@ YAML::Node loadYaml(string programPath, const std::string& folderPath, const std
         config = YAML::Load(file2);
     }
     catch (const std::exception& e) {
-        addConfigLoadingMessage("WARNING | Error on reading the config file (not processing!):\nERROR | " + string(e.what()));
+        addConfigLoadingMessage("WARNING | Error on reading the config file (not processing!):\nERROR | " + std::string(e.what()));
         wrongConfig = true;
         return config;
     }
 
-    //cout << "Loaded: '" << config << "'" << endl;
-    //cout << "Defined: " << config.IsDefined() << endl;
+    //std::cout << "Loaded: '" << config << "'" << endl;
+    //std::cout << "Defined: " << config.IsDefined() << endl;
     //if (!config.IsDefined()) config = YAML::Node();
-    //cout << "Null, !Defined: " << config.IsNull() << " " << !config.IsDefined() << endl;
+    //std::cout << "Null, !Defined: " << config.IsNull() << " " << !config.IsDefined() << endl;
     if (config.IsNull() || !config.IsDefined()) config = YAML::Node();
     return config;
 }
 
-void saveYaml(YAML::Node &config, string path) {
-    //cout << path << endl;
+void saveYaml(YAML::Node &config, std::string path) {
+    //std::cout << path << endl;
     YAML::Emitter emitter;
     emitter.SetIndent(4); // Sets the indentation level for nested nodes
     emitter.SetMapFormat(YAML::Block); // Prints maps as a compact, single line 
@@ -197,7 +195,7 @@ void saveYaml(YAML::Node &config, string path) {
     file.close();
 }
 
-YAML::Node getConfigValue(const YAML::Node &config, string path) {
+YAML::Node getConfigValue(const YAML::Node &config, std::string path) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -217,7 +215,7 @@ YAML::Node getConfigValue(const YAML::Node &config, string path) {
     return *node;
 }
 
-void setConfigValue(const YAML::Node &config, string path, string value) {
+void setConfigValue(const YAML::Node &config, std::string path, std::string value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -237,7 +235,7 @@ void setConfigValue(const YAML::Node &config, string path, string value) {
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, vector<YAML::Node> value) {
+void setConfigValue(const YAML::Node &config, std::string path, std::vector<YAML::Node> value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -257,7 +255,7 @@ void setConfigValue(const YAML::Node &config, string path, vector<YAML::Node> va
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, YAML::Node value) {
+void setConfigValue(const YAML::Node &config, std::string path, YAML::Node value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -276,8 +274,8 @@ void setConfigValue(const YAML::Node &config, string path, YAML::Node value) {
 
     (*node)[splittedStrings[splittedStrings.size() - 1]] = YAML::Clone(value);
 
-    /*if (value.IsMap()) (*node)[splittedStrings[splittedStrings.size() - 1]] = value.as<map<string, YAML::Node>>();
-    else if (value.IsSequence()) (*node)[splittedStrings[splittedStrings.size() - 1]] = value.as<vector<YAML::Node>>();
+    /*if (value.IsMap()) (*node)[splittedStrings[splittedStrings.size() - 1]] = value.as<map<std::string, YAML::Node>>();
+    else if (value.IsSequence()) (*node)[splittedStrings[splittedStrings.size() - 1]] = value.as<std::vector<YAML::Node>>();
     else {
         try {
             (*node)[splittedStrings[splittedStrings.size() - 1]] = value.as<int>();
@@ -297,21 +295,21 @@ void setConfigValue(const YAML::Node &config, string path, YAML::Node value) {
         }
         catch (const YAML::Exception& e) {}
         try {
-            (*node)[splittedStrings[splittedStrings.size() - 1]] = value.as<string>();
+            (*node)[splittedStrings[splittedStrings.size() - 1]] = value.as<std::string>();
             return;
         }
         catch (const YAML::Exception& e) {}
         (*node)[splittedStrings[splittedStrings.size() - 1]] = YAML::Clone(value);
     }*/
 
-    //cout << (*node)[splittedStrings[splittedStrings.size() - 1]] << endl;
+    //std::cout << (*node)[splittedStrings[splittedStrings.size() - 1]] << endl;
 }
 
 void setValueRecursively(YAML::Node node, YAML::Node value) {
 
 }
 
-void setConfigValue(const YAML::Node &config, string path, int value) {
+void setConfigValue(const YAML::Node &config, std::string path, int value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -331,7 +329,7 @@ void setConfigValue(const YAML::Node &config, string path, int value) {
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, long value) {
+void setConfigValue(const YAML::Node &config, std::string path, long value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -351,7 +349,7 @@ void setConfigValue(const YAML::Node &config, string path, long value) {
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, float value) {
+void setConfigValue(const YAML::Node &config, std::string path, float value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -371,7 +369,7 @@ void setConfigValue(const YAML::Node &config, string path, float value) {
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, bool value) {
+void setConfigValue(const YAML::Node &config, std::string path, bool value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -391,7 +389,7 @@ void setConfigValue(const YAML::Node &config, string path, bool value) {
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, vector<string> value) {
+void setConfigValue(const YAML::Node &config, std::string path, std::vector<std::string> value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -411,7 +409,7 @@ void setConfigValue(const YAML::Node &config, string path, vector<string> value)
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, vector<int> value) {
+void setConfigValue(const YAML::Node &config, std::string path, std::vector<int> value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -431,7 +429,7 @@ void setConfigValue(const YAML::Node &config, string path, vector<int> value) {
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, vector<long> value) {
+void setConfigValue(const YAML::Node &config, std::string path, std::vector<long> value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -451,7 +449,7 @@ void setConfigValue(const YAML::Node &config, string path, vector<long> value) {
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, vector<float> value) {
+void setConfigValue(const YAML::Node &config, std::string path, std::vector<float> value) {
     std::vector<std::string> splittedStrings;
 
     std::stringstream ss(path);
@@ -471,21 +469,21 @@ void setConfigValue(const YAML::Node &config, string path, vector<float> value) 
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
-void setConfigValue(const YAML::Node &config, string path, char* value) {
-    setConfigValue(config, path, string(value));
+void setConfigValue(const YAML::Node &config, std::string path, char* value) {
+    setConfigValue(config, path, std::string(value));
 }
 
-void setConfigValue(const YAML::Node &config, string path, const char* value) {
-    setConfigValue(config, path, string(value));
+void setConfigValue(const YAML::Node &config, std::string path, const char* value) {
+    setConfigValue(config, path, std::string(value));
 }
 
-int getConfigInt(const YAML::Node &config, string key, int defaultValue) {
+int getConfigInt(const YAML::Node &config, std::string key, int defaultValue) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
     }
     catch (const YAML::Exception& e) {
-        addConfigLoadingMessage("WARNING | Unable to read config value \"" + key + "\", using default value \"" + to_string(defaultValue) + "\" instead.");
+        addConfigLoadingMessage("WARNING | Unable to read config value \"" + key + "\", using default value \"" + std::to_string(defaultValue) + "\" instead.");
         return defaultValue;
     }
     if (!data.IsDefined()) {
@@ -493,14 +491,14 @@ int getConfigInt(const YAML::Node &config, string key, int defaultValue) {
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Scalar) {
-        addConfigLoadingMessage("WARNING | Detected non-scalar value at INT type key \"" + key + "\"! Replacing it with the default value \"" + to_string(defaultValue) + "\".");
+        addConfigLoadingMessage("WARNING | Detected non-scalar value at INT type key \"" + key + "\"! Replacing it with the default value \"" + std::to_string(defaultValue) + "\".");
         setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     char* pEnd = NULL;
-    int v = strtol(data.as<string>().c_str(), &pEnd, 10);
+    int v = strtol(data.as<std::string>().c_str(), &pEnd, 10);
     if (*pEnd != '\0') {
-        addConfigLoadingMessage("WARNING | Wrong format for INT type at key \"" + key + "\"! Using default value \"" + to_string(defaultValue) + "\" instead.");
+        addConfigLoadingMessage("WARNING | Wrong format for INT type at key \"" + key + "\"! Using default value \"" + std::to_string(defaultValue) + "\" instead.");
         return defaultValue;
     }
     else {
@@ -508,13 +506,13 @@ int getConfigInt(const YAML::Node &config, string key, int defaultValue) {
     }
 }
 
-long getConfigLong(const YAML::Node &config, string key, long defaultValue) {
+long getConfigLong(const YAML::Node &config, std::string key, long defaultValue) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
     }
     catch (const YAML::Exception& e) {
-        addConfigLoadingMessage("WARNING | Unable to read config value \"" + key + "\", using default value \"" + to_string(defaultValue) + "\" instead.");
+        addConfigLoadingMessage("WARNING | Unable to read config value \"" + key + "\", using default value \"" + std::to_string(defaultValue) + "\" instead.");
         return defaultValue;
     }
     if (!data.IsDefined()) {
@@ -522,14 +520,14 @@ long getConfigLong(const YAML::Node &config, string key, long defaultValue) {
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Scalar) {
-        addConfigLoadingMessage("WARNING | Detected non-scalar value at LONG type key \"" + key + "\"! Replacing it with the default value \"" + to_string(defaultValue) + "\".");
+        addConfigLoadingMessage("WARNING | Detected non-scalar value at LONG type key \"" + key + "\"! Replacing it with the default value \"" + std::to_string(defaultValue) + "\".");
         setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     char* pEnd = NULL;
-    long v = strtol(data.as<string>().c_str(), &pEnd, 10);
+    long v = strtol(data.as<std::string>().c_str(), &pEnd, 10);
     if (*pEnd != '\0') {
-        addConfigLoadingMessage("WARNING | Wrong format for LONG type at key \"" + key + "\"! Using default value \"" + to_string(defaultValue) + "\" instead.");
+        addConfigLoadingMessage("WARNING | Wrong format for LONG type at key \"" + key + "\"! Using default value \"" + std::to_string(defaultValue) + "\" instead.");
         return defaultValue;
     }
     else {
@@ -537,13 +535,13 @@ long getConfigLong(const YAML::Node &config, string key, long defaultValue) {
     }
 }
 
-float getConfigFloat(const YAML::Node &config, string key, float defaultValue) {
+float getConfigFloat(const YAML::Node &config, std::string key, float defaultValue) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
     }
     catch (const YAML::Exception& e) {
-        addConfigLoadingMessage("WARNING | Unable to read config value \"" + key + "\", using default value \"" + to_string(defaultValue) + "\" instead.");
+        addConfigLoadingMessage("WARNING | Unable to read config value \"" + key + "\", using default value \"" + std::to_string(defaultValue) + "\" instead.");
         return defaultValue;
     }
     if (!data.IsDefined()) {
@@ -551,14 +549,14 @@ float getConfigFloat(const YAML::Node &config, string key, float defaultValue) {
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Scalar) {
-        addConfigLoadingMessage("WARNING | Detected non-scalar value at FLOAT type key \"" + key + "\"! Replacing it with the default value \"" + to_string(defaultValue) + "\".");
+        addConfigLoadingMessage("WARNING | Detected non-scalar value at FLOAT type key \"" + key + "\"! Replacing it with the default value \"" + std::to_string(defaultValue) + "\".");
         setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     char* pEnd = NULL;
-    float v = strtof(data.as<string>().c_str(), &pEnd);
+    float v = strtof(data.as<std::string>().c_str(), &pEnd);
     if (*pEnd != '\0') {
-        addConfigLoadingMessage("WARNING | Wrong format for FLOAT type at key \"" + key + "\"! Using default value \"" + to_string(defaultValue) + "\" instead.");
+        addConfigLoadingMessage("WARNING | Wrong format for FLOAT type at key \"" + key + "\"! Using default value \"" + std::to_string(defaultValue) + "\" instead.");
         return defaultValue;
     }
     else {
@@ -567,13 +565,13 @@ float getConfigFloat(const YAML::Node &config, string key, float defaultValue) {
 }
 
 bool stringToBool(const std::string& str) {
-    // Convert the string to lowercase for case-insensitive comparison
+    // Convert the std::string to lowercase for case-insensitive comparison
     std::string lowercaseStr;
     for (const char& c : str) {
         lowercaseStr += std::tolower(c);
     }
 
-    // Check if the string matches true or false
+    // Check if the std::string matches true or false
         if (lowercaseStr == "true" || lowercaseStr == "yes" || lowercaseStr == "1") {
             return true;
         }
@@ -581,16 +579,16 @@ bool stringToBool(const std::string& str) {
             return false;
         }
 
-    // Throw an exception or return a default value if the string is not a valid bool
+    // Throw an std::exception or return a default value if the std::string is not a valid bool
     throw std::invalid_argument("Invalid bool value: " + str);
 }
 
-string boolToStrDeco(bool b) {
+std::string boolToStrDeco(bool b) {
     if (b) return "true";
     return "false";
 }
 
-bool getConfigBool(const YAML::Node &config, string key, bool defaultValue) {
+bool getConfigBool(const YAML::Node &config, std::string key, bool defaultValue) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -609,10 +607,10 @@ bool getConfigBool(const YAML::Node &config, string key, bool defaultValue) {
         return defaultValue;
     }
     //char* pEnd = NULL;
-    //bool v = static_cast<bool>(strtol(data.as<string>().c_str(), &pEnd, 10));
+    //bool v = static_cast<bool>(strtol(data.as<std::string>().c_str(), &pEnd, 10));
     bool v;
     try {
-        v = stringToBool(data.as<string>().c_str());
+        v = stringToBool(data.as<std::string>().c_str());
     }
     catch (const std::invalid_argument& e) {
     //if (*pEnd != '\0') {
@@ -622,7 +620,7 @@ bool getConfigBool(const YAML::Node &config, string key, bool defaultValue) {
     return v;
 }
 
-vector<string> getConfigVectorString(const YAML::Node &config, string key, vector<string> defaultValue) {
+std::vector<std::string> getConfigVectorString(const YAML::Node &config, std::string key, std::vector<std::string> defaultValue) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -641,16 +639,16 @@ vector<string> getConfigVectorString(const YAML::Node &config, string key, vecto
         return defaultValue;
     }
 
-    vector<string> v;
+    std::vector<std::string> v;
 
     for (YAML::const_iterator it = data.begin(); it != data.end(); ++it) {
-        string value = it->as<string>();
+        std::string value = it->as<std::string>();
         v.push_back(value);
     }
     return v;
 }
 
-string getConfigString(const YAML::Node &config, string key, string defaultValue) {
+std::string getConfigString(const YAML::Node &config, std::string key, std::string defaultValue) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -665,17 +663,17 @@ string getConfigString(const YAML::Node &config, string key, string defaultValue
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Scalar) {
-        addConfigLoadingMessage("WARNING | Detected non-scalar value at STRING type key \"" + key + "\"! Replacing it with the default value \"" + defaultValue + "\".");
+        addConfigLoadingMessage("WARNING | Detected non-scalar value at std::string type key \"" + key + "\"! Replacing it with the default value \"" + defaultValue + "\".");
         setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     char* pEnd = NULL;
-    string v = data.as<string>();
+    std::string v = data.as<std::string>();
     return v;
 }
 
-void removeConfigValue(YAML::Node &config, string path, bool throwException) {
-    //cout << "REMOVE START" << endl;
+void removeConfigValue(YAML::Node &config, std::string path, bool throwException) {
+    //std::cout << "REMOVE START" << endl;
     std::vector<std::string> splittedStrings;
     std::vector<YAML::Node> nodes;
     nodes.push_back(config);
@@ -693,19 +691,19 @@ void removeConfigValue(YAML::Node &config, string path, bool throwException) {
     }
     else if (splittedStrings.size() == 0) {
         if (throwException) {
-            string text = "No such value! (" + path + ")";
-            throw(exception(text.c_str()));
+            std::string text = "No such value! (" + path + ")";
+            throw(std::exception(text.c_str()));
         } else return;
     }
 
     for (int max = splittedStrings.size() - 1; max > 0; max--) {
-        string key = "";
+        std::string key = "";
         for (int i = 0; i < max; i++) {
             key += splittedStrings[i];
             if (i + 1 < max) key += "/";
         }
 
-        //cout << key << endl;
+        //std::cout << key << endl;
 
         YAML::Node data;
         try {
@@ -716,26 +714,26 @@ void removeConfigValue(YAML::Node &config, string path, bool throwException) {
             else return;
         }
 
-        //cout << "'" << data << "'" << endl << "Looking for " << splittedStrings[max] << endl;
-        //cout << "First choice: " << (max == splittedStrings.size() - 1) << endl;
+        //std::cout << "'" << data << "'" << endl << "Looking for " << splittedStrings[max] << endl;
+        //std::cout << "First choice: " << (max == splittedStrings.size() - 1) << endl;
 
         if (max == splittedStrings.size() - 1) data.remove(splittedStrings[splittedStrings.size() - 1]);
         else {
-            //cout << (data[splittedStrings[max]].IsNull()) << endl;
-            //cout << "|||||" << data[splittedStrings[max]] << "|||||" << " IsMap: " << data[splittedStrings[max]].IsMap() << endl;
-            //if (data[splittedStrings[max]].IsMap()) cout << data[splittedStrings[max]].as<std::map<string, YAML::Node>>().empty() << endl;
-            //cout << "Second choice: " << (data[splittedStrings[max]].IsMap() && data[splittedStrings[max]].as<std::map<string, YAML::Node>>().empty()) << endl;
-            if (data[splittedStrings[max]].IsMap() && data[splittedStrings[max]].as<std::map<string, YAML::Node>>().empty()) {
+            //std::cout << (data[splittedStrings[max]].IsNull()) << endl;
+            //std::cout << "|||||" << data[splittedStrings[max]] << "|||||" << " IsMap: " << data[splittedStrings[max]].IsMap() << endl;
+            //if (data[splittedStrings[max]].IsMap()) std::cout << data[splittedStrings[max]].as<std::map<std::string, YAML::Node>>().empty() << endl;
+            //std::cout << "Second choice: " << (data[splittedStrings[max]].IsMap() && data[splittedStrings[max]].as<std::map<std::string, YAML::Node>>().empty()) << endl;
+            if (data[splittedStrings[max]].IsMap() && data[splittedStrings[max]].as<std::map<std::string, YAML::Node>>().empty()) {
                 data.remove(splittedStrings[max]);
             }
             else {
-                //cout << endl;
+                //std::cout << endl;
                 return;
             }
-            //cout << splittedStrings[max] << endl;
+            //std::cout << splittedStrings[max] << endl;
         }
 
-        //cout << endl;
+        //std::cout << endl;
     }
 
     /*YAML::Node* node = new YAML::Node();
@@ -748,11 +746,11 @@ void removeConfigValue(YAML::Node &config, string path, bool throwException) {
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;*/
 }
 
-void removeConfigValue(YAML::Node &config, string path) {
+void removeConfigValue(YAML::Node &config, std::string path) {
     removeConfigValue(config, path, false);
 }
 
-void copyConfigValue(YAML::Node &config, string key, string newKey, bool throwException) {
+void copyConfigValue(YAML::Node &config, std::string key, std::string newKey, bool throwException) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -764,11 +762,11 @@ void copyConfigValue(YAML::Node &config, string key, string newKey, bool throwEx
     setConfigValue(config, newKey, data);
 }
 
-void copyConfigValue(YAML::Node &config, string key, string newKey) {
+void copyConfigValue(YAML::Node &config, std::string key, std::string newKey) {
     copyConfigValue(config, key, newKey, false);
 }
 
-void moveConfigValue(YAML::Node &config, string key, string newKey, bool throwException) {
+void moveConfigValue(YAML::Node &config, std::string key, std::string newKey, bool throwException) {
     try {
         copyConfigValue(config, key, newKey, true);
     } catch (const YAML::Exception& e) {
@@ -778,11 +776,11 @@ void moveConfigValue(YAML::Node &config, string key, string newKey, bool throwEx
     removeConfigValue(config, key);
 }
 
-void moveConfigValue(YAML::Node &config, string key, string newKey) {
+void moveConfigValue(YAML::Node &config, std::string key, std::string newKey) {
     moveConfigValue(config, key, newKey, false);
 }
 
-bool checkExists(const YAML::Node& config, string key) {
+bool checkExists(const YAML::Node& config, std::string key) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
