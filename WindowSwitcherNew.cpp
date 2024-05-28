@@ -3,12 +3,6 @@
 #pragma comment(lib, "Dwmapi.lib") // for DwmGetWindowAttribute and so on
 
 #include <yaml-cpp/yaml.h>
-#include "ConfigOperations.h"
-#include "GeneralUtils.h"
-#include "KeySequence.h"
-#include "CustomHotkeys.h"
-#include "Data.h"
-
 #include <windows.h>
 #include <iostream>
 #include <stdio.h>
@@ -21,6 +15,13 @@
 #include <dwmapi.h>
 #include <condition_variable>
 #include <csignal>
+
+#include "InputRelated.cpp"
+
+#include "ConfigOperations.h"
+#include "GeneralUtils.h"
+#include "CustomHotkeys.h"
+#include "Data.h"
 
 // Pre-defining all classes and methods
 class WindowGroup;
