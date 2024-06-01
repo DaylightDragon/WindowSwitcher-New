@@ -86,8 +86,8 @@ std::thread* keyboardHookThread;
 std::thread* mouseHookThread;
 
 std::condition_variable macroWaitCv;
-std::mutex macroWaitMutex;
-std::unique_lock<std::mutex> macroWaitLock = std::unique_lock<std::mutex>(macroWaitMutex);
+std::mutex* macroWaitMutex = nullptr;
+std::unique_lock<std::mutex>* macroWaitLock = nullptr;
 
 bool debugMode = IsDebuggerPresent();;
 //std::string mainConfigName = "WsSettings/settings.yml";
@@ -640,7 +640,8 @@ bool waitIfInterrupted() {
     bool interrupted = waitFor > 0;
     if (interrupted) {
         //std::cout << "Waiting...\n";
-        macroWaitCv.wait(macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
+        //std::unique_lock<std::mutex> macroWaitLock = std::unique_lock<std::mutex>(std::mutex());
+        macroWaitCv.wait(*macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
         //interruptionManager.load()->getConditionVariable().wait(interruptionManager.load()->getLock(), [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
         //std::cout << "Done waiting\n";
     }
@@ -1161,6 +1162,7 @@ void readDefaultMainSequence(const YAML::Node& config) {
 
 void resetInterruptionManager(const YAML::Node& config) {
     if (interruptionManager != nullptr) {
+        //interruptionManager.load().get
         delete interruptionManager;
         interruptionManager = nullptr;
     }
@@ -1680,6 +1682,11 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exceptionInfo) {
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
+void initSomeValues() {
+    macroWaitMutex = new std::mutex();
+    macroWaitLock = new std::unique_lock<std::mutex>{ *macroWaitMutex };
+}
+
 int actualMain(int argc, char* argv[]) {
     // Setting error handlers for non-debug configuration
     if (true || !debugMode) {
@@ -1688,8 +1695,9 @@ int actualMain(int argc, char* argv[]) {
         SetUnhandledExceptionFilter(&UnhandledExceptionHandler);
     }
 
-    //throw exception("aaa");
+    initSomeValues();
 
+    //throw exception("aaa");
     /*int a = 0;
     int b = 0;
     std::cout << a / b;*/
@@ -1845,8 +1853,8 @@ int actualMain(int argc, char* argv[]) {
             }
             if (msg.wParam == 21) { // real debug
                 std::cout << "Waiting2...\n";
-                //macroWaitLock = std::unique_lock<std::mutex>(macroWaitMutex);
-                macroWaitCv.wait(macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
+                //std::unique_lock<std::mutex> macroWaitLock = std::unique_lock<std::mutex>(std::mutex());
+                macroWaitCv.wait(*macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
                 std::cout << "Done2\n";
             }
             hungWindowsAnnouncement();
