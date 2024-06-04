@@ -33,7 +33,7 @@ struct Key {
 class KeySequence {
     private:
         std::vector<Key> keys;
-        long cooldownPerWindow = 1000 * 60 * 5; // 5 minutes
+        long cooldownPerWindow = 1000 * 30; // 30 seconds
 
     public:
         KeySequence() {
@@ -64,7 +64,7 @@ class KeySequence {
                     }
                 }
             }
-            getConfigLong(node, "cooldownPerWindow_milliseconds", 1000 * 60 * 5);
+            cooldownPerWindow = getConfigLong(node, "cooldownPerWindow_milliseconds", 1000 * 30);
         }
 
         KeySequence(std::string singleKeySimple) {
@@ -78,6 +78,14 @@ class KeySequence {
 
         std::vector<Key> getKeys() {
             return keys;
+        }
+
+        long getCooldownPerWindow() {
+            return cooldownPerWindow;
+        }
+
+        void setCooldownPerWindow(long cooldown) {
+            this->cooldownPerWindow = cooldown;
         }
 
         int countEnabledKeys() {

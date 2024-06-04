@@ -31,8 +31,8 @@ void deleteWindowGroup(WindowGroup* wg);
 //Settings
 
 // Windows, sequences and managers
-std::map<HWND, WindowGroup*> referenceToGroup;
-std::map<WindowGroup*, KeySequence*> groupToKey;
+std::map<HWND, WindowGroup*> handleToGroup;
+std::map<WindowGroup*, KeySequence*> groupToSequence;
 WindowGroup* lastGroup;
 KeySequence* mainSequence;
 std::map<std::string, KeySequence*> knownOtherSequences = std::map<std::string, KeySequence*>();
@@ -124,66 +124,90 @@ void hungWindowsAnnouncement() {
     }
 }
 
+struct WindowInfo {
+    HWND hwnd;
+    std::chrono::steady_clock::time_point lastSequenceInputTimestamp;
+    
+    WindowInfo(HWND hwnd) {
+        this->hwnd = hwnd;
+    }
+
+    void refreshTimestamp() {
+        lastSequenceInputTimestamp = std::chrono::steady_clock::now();
+    }
+    
+    bool operator==(const WindowInfo& other) const {
+        return hwnd == other.hwnd && lastSequenceInputTimestamp == other.lastSequenceInputTimestamp;
+    }
+};
+
 class WindowGroup {
 private:
-    std::vector<HWND> hwnds;
+    std::vector<WindowInfo> windows;
     int index = 0;
 
 public:
-    std::vector<HWND> getOthers() {
-        std::vector<HWND> v;
+    std::vector<WindowInfo> getOthers() {
+        std::vector<WindowInfo> v;
         removeClosedWindows();
-        if (&hwnds == NULL || hwnds.size() == 0) return v;
-        for (int i = 0; i < hwnds.size(); i++) {
-            if (i != index) v.push_back(hwnds[i]);
+        if (&windows == nullptr || windows.size() == 0) return v;
+        for (int i = 0; i < windows.size(); i++) {
+            if (i != index) v.push_back(WindowInfo(windows[i]));
         }
         return v;
     }
 
     HWND getCurrent() {
         removeClosedWindows();
-        if (&hwnds == NULL || hwnds.size() == 0) return NULL;
-        return hwnds[index];
+        if (&windows == NULL || windows.size() == 0) return NULL;
+        return windows[index].hwnd;
+    }
+
+    WindowInfo* getWindowInfoFromHandle(HWND hwnd) {
+        for (auto& it : windows) {
+            if (it.hwnd == hwnd) return &it;
+        }
+        return nullptr;
     }
 
     bool containsWindow(HWND hwnd) {
         removeClosedWindows();
-        return (find(hwnds.begin(), hwnds.end(), hwnd) != hwnds.end());
+        return (find(windows.begin(), windows.end(), hwnd) != windows.end());
     }
 
     void addWindow(HWND hwnd) {
         if (containsWindow(hwnd)) return;
         removeClosedWindows();
-        hwnds.push_back(hwnd);
-        if (hideNotMainWindows && index != hwnds.size() - 1) {
+        windows.push_back(hwnd);
+        if (hideNotMainWindows && index != windows.size() - 1) {
             if (!checkHungWindow(hwnd)) ShowWindow(hwnd, SW_HIDE);
         }
         //testPrintHwnds();
     }
 
     void removeWindow(HWND hwnd) {
-        if (&hwnds == NULL || hwnds.size() == 0) return;
+        if (&windows == NULL || windows.size() == 0) return;
         removeClosedWindows();
         //std::cout << "removeWindow " << hwnds.size() << " " << hwnd;
         bool main = false;
-        if (hwnd == hwnds[index]) main = true;
-        referenceToGroup.erase(referenceToGroup.find(hwnd));
-        hwnds.erase(std::remove(hwnds.begin(), hwnds.end(), hwnd), hwnds.end());
-        if (hwnds.size() == 0) deleteWindowGroup(this);
+        if (hwnd == windows[index].hwnd) main = true;
+        handleToGroup.erase(handleToGroup.find(hwnd));
+        windows.erase(std::remove(windows.begin(), windows.end(), hwnd), windows.end());
+        if (windows.size() == 0) deleteWindowGroup(this);
         if (main) shiftWindows(-1);
         fixIndex();
     }
 
     void shiftWindows(int times) {
-        if (&hwnds == NULL) return;
+        if (&windows == NULL) return;
         removeClosedWindows();
-        if (hwnds.size() == 0) return;
+        if (windows.size() == 0) return;
         HWND oldHwnd = getCurrent();
         if (times >= 0) {
-            index = (index + times) % hwnds.size();
+            index = (index + times) % windows.size();
         }
         else {
-            index = (hwnds.size() * (-1 * times) + index + times) % hwnds.size();
+            index = (windows.size() * (-1 * times) + index + times) % windows.size();
         }
         if (hideNotMainWindows) {
             //std::cout << oldHwnd << " " << getCurrent() << endl;
@@ -194,44 +218,44 @@ public:
     }
 
     void fixIndex() {
-        if (&hwnds == NULL) return;
-        if (hwnds.size() == 0) index = 0;
-        else index = index % hwnds.size();
+        if (&windows == NULL) return;
+        if (windows.size() == 0) index = 0;
+        else index = index % windows.size();
     }
 
     void removeClosedWindows() {
-        if (&hwnds == NULL || hwnds.size() == 0) return;
-        for (int i = 0; i < hwnds.size(); i++) {
-            if (&hwnds[i] && !IsWindow(hwnds[i])) {
-                referenceToGroup.erase(referenceToGroup.find(hwnds[i]));
-                hwnds.erase(hwnds.begin() + i);
+        if (&windows == NULL || windows.size() == 0) return;
+        for (int i = 0; i < windows.size(); i++) {
+            if (&windows[i] && !IsWindow(windows[i].hwnd)) {
+                handleToGroup.erase(handleToGroup.find(windows[i].hwnd));
+                windows.erase(windows.begin() + i);
             }
         }
         fixIndex();
     }
 
     void hideOrShowOthers() {
-        std::vector<HWND> others = getOthers();
+        std::vector<WindowInfo> others = getOthers();
         for (auto& it : others) {
-            if (!checkHungWindow(it)) {
+            if (!checkHungWindow(it.hwnd)) {
                 if (hideNotMainWindows) {
-                    ShowWindow(it, SW_HIDE);
+                    ShowWindow(it.hwnd, SW_HIDE);
                 }
                 else {
-                    ShowWindow(it, SW_SHOW);
+                    ShowWindow(it.hwnd, SW_SHOW);
                 }
             }
         }
     }
 
     void testPrintHwnds() {
-        for (auto& hwnd : hwnds) {
-            std::cout << "HWND " << &hwnd << '\n';
+        for (auto& hwnd : windows) {
+            std::cout << "HWND " << &hwnd.hwnd << '\n';
         }
     }
 
     int size() {
-        return hwnds.size();
+        return windows.size();
     }
 
     void moveInOrder(HWND* hwnd, int times) {}
@@ -401,8 +425,8 @@ void customSleep(int duration) {
 }
 
 WindowGroup* getGroup(HWND hwnd) {
-    if (referenceToGroup.count(hwnd)) {
-        std::map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(hwnd);
+    if (handleToGroup.count(hwnd)) {
+        std::map<HWND, WindowGroup*>::iterator it = handleToGroup.find(hwnd);
         WindowGroup* wg = it->second;
         return wg;
     }
@@ -410,12 +434,12 @@ WindowGroup* getGroup(HWND hwnd) {
 }
 
 void ShowOnlyMainInGroup(WindowGroup* wg) {
-    std::vector<HWND> others = (*wg).getOthers();
-    std::vector<HWND>::iterator iter;
+    std::vector<WindowInfo> others = (*wg).getOthers();
+    std::vector<WindowInfo>::iterator iter;
     for (iter = others.begin(); iter != others.end(); ++iter) {
         //std::cout << *iter << " MINIMIZE" << endl;
         if (!hideNotMainWindows) {
-            if (!checkHungWindow(*iter)) ShowWindow(*iter, SW_MINIMIZE);
+            if (!checkHungWindow(iter->hwnd)) ShowWindow(iter->hwnd, SW_MINIMIZE);
         }
     }
     HWND c = (*wg).getCurrent();
@@ -426,8 +450,8 @@ void ShowOnlyMainInGroup(WindowGroup* wg) {
 }
 
 void ShowOnlyMainInGroup(HWND hwnd) {
-    if (referenceToGroup.count(hwnd)) {
-        std::map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(hwnd);
+    if (handleToGroup.count(hwnd)) {
+        std::map<HWND, WindowGroup*>::iterator it = handleToGroup.find(hwnd);
         ShowOnlyMainInGroup(it->second);
     }
 }
@@ -455,7 +479,7 @@ void shiftAllGroups(int shift) {
     std::vector<WindowGroup*> used;
     std::map<HWND, WindowGroup*>::iterator it;
 
-    for (it = referenceToGroup.begin(); it != referenceToGroup.end(); it++) {
+    for (it = handleToGroup.begin(); it != handleToGroup.end(); it++) {
         if (used.empty() || !(find(used.begin(), used.end(), it->second) != used.end())) {
             shiftGroup(it->second, shift);
             used.push_back(it->second); // is * refering to it or it->second?
@@ -469,7 +493,7 @@ void shiftAllOtherGroups(int shift) {
 
     HWND h = GetForegroundWindow();
 
-    for (it = referenceToGroup.begin(); it != referenceToGroup.end(); it++) {
+    for (it = handleToGroup.begin(); it != handleToGroup.end(); it++) {
         if (used.empty() || !(find(used.begin(), used.end(), it->second) != used.end())) {
             //std::cout << (h == it->first) << endl;
             //std::wcout << getWindowName(it->first) << endl;
@@ -477,7 +501,7 @@ void shiftAllOtherGroups(int shift) {
             //std::cout << it->second << endl;
             //std::cout << referenceToGroup[h] << endl << endl;
             //std::cout << (referenceToGroup[h] == it->second) << endl;
-            if (referenceToGroup[h] != it->second) shiftGroup(it->second, shift);
+            if (handleToGroup[h] != it->second) shiftGroup(it->second, shift);
             used.push_back(it->second); // is * refering to it or it->second?
         }
     }
@@ -488,10 +512,10 @@ void shiftAllOtherGroups(int shift) {
 }
 
 void deleteWindow(HWND hwnd) {
-    if (referenceToGroup.count(hwnd)) {
-        WindowGroup* wg = referenceToGroup.find(hwnd)->second;
+    if (handleToGroup.count(hwnd)) {
+        WindowGroup* wg = handleToGroup.find(hwnd)->second;
         (*wg).removeWindow(hwnd);
-        referenceToGroup.erase(referenceToGroup.find(hwnd));
+        handleToGroup.erase(handleToGroup.find(hwnd));
     }
 }
 
@@ -499,9 +523,9 @@ void deleteWindowGroup(WindowGroup* wg) {
     /*for (auto& p : referenceToGroup)
         std::cout << p.first << " " << p.second << " " << endl;*/
     std::map<HWND, WindowGroup*>::iterator it;
-    for (auto it = referenceToGroup.begin(); it != referenceToGroup.end(); ) {
+    for (auto it = handleToGroup.begin(); it != handleToGroup.end(); ) {
         if (wg == it->second) {
-            it = referenceToGroup.erase(it);
+            it = handleToGroup.erase(it);
         }
         else {
             ++it; // can have a bug
@@ -511,8 +535,8 @@ void deleteWindowGroup(WindowGroup* wg) {
 }
 
 void deleteWindowGroup(HWND hwnd) {
-    if (referenceToGroup.count(hwnd)) {
-        deleteWindowGroup(referenceToGroup.find(hwnd)->second);
+    if (handleToGroup.count(hwnd)) {
+        deleteWindowGroup(handleToGroup.find(hwnd)->second);
     }
 }
 
@@ -523,15 +547,15 @@ void SwapVisibilityForAll() {
     std::vector<HWND> main;
     std::vector<HWND> other;
 
-    for (it = referenceToGroup.begin(); it != referenceToGroup.end(); it++) {
+    for (it = handleToGroup.begin(); it != handleToGroup.end(); it++) {
         //if (IsHungAppWindow(it->first)) std::cout << "Hang up window 8" << endl;
         if (used.empty() || !(find(used.begin(), used.end(), it->second) != used.end())) {
             WindowGroup* wg = it->second;
             main.push_back((*wg).getCurrent());
-            std::vector<HWND> others = (*wg).getOthers();
-            std::vector<HWND>::iterator iter;
+            std::vector<WindowInfo> others = (*wg).getOthers();
+            std::vector<WindowInfo>::iterator iter;
             for (iter = others.begin(); iter != others.end(); ++iter) {
-                other.push_back(*iter);
+                other.push_back(iter->hwnd);
             }
 
             used.push_back(it->second); // is * refering to it or it->second?
@@ -569,7 +593,7 @@ void SwapVisibilityForAll() {
 
 void checkClosedWindows() {
     bool br = false;
-    for (const auto& it : referenceToGroup) {
+    for (const auto& it : handleToGroup) {
         if (it.first != NULL) {
             if (!IsWindow(it.first)) {
                 if (it.second != nullptr) it.second->removeClosedWindows();
@@ -624,7 +648,7 @@ void showAllRx() {
 
 void restoreAllConnected() {
     hideNotMainWindows = false;
-    for (const auto& it : referenceToGroup) {
+    for (const auto& it : handleToGroup) {
         if (it.first != NULL && !checkHungWindow(it.first)) {
             ShowWindow(it.first, SW_MINIMIZE); // bad way // though not that much lol
             ShowWindow(it.first, SW_RESTORE);
@@ -706,8 +730,8 @@ bool pressAndUnpressAKey(HWND w, Key k) { // returns true if was paused and need
 
 bool performASequence(HWND w) {
     bool shouldRestartSequence = false;
-    if (groupToKey.count(referenceToGroup[w])) {
-        std::vector<Key> keys = groupToKey[referenceToGroup[w]]->getKeys();
+    if (groupToSequence.count(handleToGroup[w])) {
+        std::vector<Key> keys = groupToSequence[handleToGroup[w]]->getKeys();
         if (keys.size() > 0) {
             for (auto& el : keys) {
                 if (stopMacroInput.load()) return false;
@@ -732,6 +756,22 @@ bool performASequence(HWND w) {
     return shouldRestartSequence;
 }
 
+bool checkCooldownActiveAndRefresh(HWND hwnd) {
+    WindowGroup* wg = handleToGroup[hwnd];
+    if (wg == nullptr) return false;
+    WindowInfo* wi = wg->getWindowInfoFromHandle(hwnd);
+    if (wi == nullptr) return false;
+    KeySequence* keySeq = mainSequence;
+    if (groupToSequence.count(wg)) keySeq = groupToSequence[wg];
+
+    auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count();
+    bool cooldown = timePassedSince < keySeq->getCooldownPerWindow();
+    //std::cout << timePassedSince << " " << keySeq->getCooldownPerWindow() << std::endl;
+
+    if (!cooldown) wi->refreshTimestamp();
+    return cooldown;
+}
+
 void focusAndSendSequence(HWND hwnd) { // find this
     /*int key = mapOfKeys[defaultMacroKey]; // 0x12
     //if(specialSingleWindowModeKeyCode)
@@ -743,6 +783,10 @@ void focusAndSendSequence(HWND hwnd) { // find this
 
     bool shouldRestartSequence = true;
     while (shouldRestartSequence) {
+        bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice
+        //std::cout << cooldown << std::endl;
+        if (cooldown) return;
+
         SetForegroundWindow(hwnd);
         customSleep(macroDelayBetweenSwitchingAndFocus);
         SetFocus(hwnd);
@@ -754,7 +798,7 @@ void focusAndSendSequence(HWND hwnd) { // find this
 }
 
 void performInputsEverywhere() {
-    for (auto& it : referenceToGroup) {
+    for (auto& it : handleToGroup) {
         if (stopMacroInput.load()) return;
         focusAndSendSequence(it.first);
         customSleep(macroDelayBeforeSwitching);
@@ -792,8 +836,8 @@ void performSingleWindowedHold() {
     SetFocus(w);
     customSleep(macroDelayAfterFocus);
     std::string key = specialSingleWindowModeKeyCode;
-    if (groupToKey.count(referenceToGroup[w])) {
-        std::vector<Key> allKeys = groupToKey[referenceToGroup[w]]->getKeys();
+    if (groupToSequence.count(handleToGroup[w])) {
+        std::vector<Key> allKeys = groupToSequence[handleToGroup[w]]->getKeys();
         if (allKeys.size() > 0) key = allKeys[0].keyCode;
     }
     keyPressString(key);
@@ -807,21 +851,21 @@ void releaseConfiguredKey() {
     SetFocus(w);
     customSleep(macroDelayAfterFocus);
     std::string key = specialSingleWindowModeKeyCode;
-    if (groupToKey.count(referenceToGroup[w])) {
-        std::vector<Key> allKeys = groupToKey[referenceToGroup[w]]->getKeys();
+    if (groupToSequence.count(handleToGroup[w])) {
+        std::vector<Key> allKeys = groupToSequence[handleToGroup[w]]->getKeys();
         if (allKeys.size() > 0) key = allKeys[0].keyCode;
     }
     keyReleaseString(key);
 }
 
 void toggleMacroState() {
-    if (referenceToGroup.size() == 0) {
+    if (handleToGroup.size() == 0) {
         std::cout << "You haven't linked any windows yet!\n";
     }
     else if (stopMacroInput.load()) {
         stopMacroInput.store(false);
         std::cout << "Starting...\n";
-        if (specialSingleWindowModeEnabled && referenceToGroup.size() == 1) {
+        if (specialSingleWindowModeEnabled && handleToGroup.size() == 1) {
             performSingleWindowedHold();
         }
         else {
@@ -830,7 +874,7 @@ void toggleMacroState() {
     }
     else {
         stopMacroInput.store(true);
-        if (referenceToGroup.size() == 1) releaseConfiguredKey();
+        if (handleToGroup.size() == 1) releaseConfiguredKey();
         std::cout << "Stopped\n";
     }
 }
@@ -1013,13 +1057,13 @@ int createSingleConnectedGroup(std::vector<HWND>* windows) {
     wg = new WindowGroup();
     int amount = 0;
     for (auto& w : *windows) {
-        if (referenceToGroup.count(w)) {
-            std::map<HWND, WindowGroup*>::iterator it = referenceToGroup.find(w);
-            referenceToGroup.find(w)->second->removeWindow(w);
+        if (handleToGroup.count(w)) {
+            std::map<HWND, WindowGroup*>::iterator it = handleToGroup.find(w);
+            handleToGroup.find(w)->second->removeWindow(w);
             //referenceToGroup.erase(referenceToGroup.find(w));
         }
         wg->addWindow(w);
-        referenceToGroup[w] = wg;
+        handleToGroup[w] = wg;
         amount++;
     }
     return amount;
@@ -1088,7 +1132,7 @@ void connectAllRbxsNoMatterWhat() {
 
 void performShowOrHideAllNotMain() {
     hideNotMainWindows = !hideNotMainWindows;
-    for (const auto& it : referenceToGroup) {
+    for (const auto& it : handleToGroup) {
         if (it.second != NULL) {
             it.second->hideOrShowOthers();
         }
@@ -1198,17 +1242,17 @@ void getFromBackgroundSpecific() {
 }
 
 void setGroupKey(HWND h) {
-    if (referenceToGroup.count(h)) {
+    if (handleToGroup.count(h)) {
         SetForegroundWindow(GetConsoleWindow());
         std::cout << "Enter the key (Eng only, lowercase, no combinations) or the extra sequence name with \"!\" in the beggining:\n";
         std::string keyName = "";
         std::getline(std::cin, keyName);
         if (keyName.rfind("!", 0) == 0) { //  && groupToKey.count(referenceToGroup[h]) // why was this here?
-            groupToKey[referenceToGroup[h]] = knownOtherSequences[keyName.substr(1)];
+            groupToSequence[handleToGroup[h]] = knownOtherSequences[keyName.substr(1)];
             std::cout << "Have set the sequence \"" << keyName.substr(1) << "\" for that window's group" << std::endl;
         }
         else if (mapOfKeys.count(keyName)) {
-            groupToKey[referenceToGroup[h]] = &KeySequence(keyName); // then use as mapOfKeys[keyName] // important comment
+            groupToSequence[handleToGroup[h]] = &KeySequence(keyName); // then use as mapOfKeys[keyName] // important comment
             std::cout << "Have set the key for that group" << std::endl;
             SetForegroundWindow(h);
         }
@@ -1949,7 +1993,7 @@ int actualMain(int argc, char* argv[]) {
                         lastGroup = new WindowGroup();
                     }
                     (*lastGroup).addWindow(curHwnd);
-                    referenceToGroup[curHwnd] = lastGroup;
+                    handleToGroup[curHwnd] = lastGroup;
                 }
             }
             else if (msg.wParam == 2) {
@@ -1965,7 +2009,7 @@ int actualMain(int argc, char* argv[]) {
                 connectAllQuarters();
             }
             else if (msg.wParam == 15) {
-                referenceToGroup.clear();
+                handleToGroup.clear();
             }
             else if (msg.wParam == 21) { // test
 
@@ -2000,7 +2044,7 @@ int actualMain(int argc, char* argv[]) {
                 printConfigLoadingMessages();
             }
             // EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE
-            if (referenceToGroup.count(curHwnd)) {
+            if (handleToGroup.count(curHwnd)) {
                 if (msg.wParam == 3) {
                     shiftGroup(curHwnd, -1);
                 }
@@ -2037,12 +2081,12 @@ int actualMain(int argc, char* argv[]) {
             }
             if (msg.wParam == 20) { // debug
                 //std::cout << ((&referenceToGroup==NULL) || referenceToGroup.size()) << endl;
-                if (referenceToGroup.size() > 0) {
+                if (handleToGroup.size() > 0) {
                     //std::cout << "The group and size (make sure not console): ";
                     //if (referenceToGroup.count(curHwnd)) std::cout << (referenceToGroup.find(curHwnd)->second) << " " << (*(referenceToGroup.find(curHwnd)->second)).size() << endl;
 
                     std::cout << "Current HWND->WindowGroup* std::map:\n";
-                    for (const auto& it : referenceToGroup) {
+                    for (const auto& it : handleToGroup) {
                         std::cout << it.first << " " << it.second;
                         if (it.first == curHwnd) std::cout << " (Current)";
                         std::cout << '\n';
