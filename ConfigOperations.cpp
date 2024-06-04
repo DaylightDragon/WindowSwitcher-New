@@ -55,6 +55,16 @@ void addConfigLoadingMessage(std::string message) {
     configLoadingMessages += message;
 }
 
+void addConfigLoadingInfo(std::string message) {
+    if (!configLoadingMessages.empty()) configLoadingMessages += "\n";
+    configLoadingMessages += "INFO | " + message;
+}
+
+void addConfigLoadingWarning(std::string message) {
+    if (!configLoadingMessages.empty()) configLoadingMessages += "\n";
+    configLoadingMessages += "WARNING | " + message;
+}
+
 void printConfigLoadingMessages() {
     if (!configLoadingMessages.empty()) {
         std::cout << "Loading config messages:\n" << configLoadingMessages << "\n\n";
@@ -476,7 +486,7 @@ void setConfigValue(const YAML::Node &config, std::string path, const char* valu
     setConfigValue(config, path, std::string(value));
 }
 
-int getConfigInt(const YAML::Node &config, std::string key, int defaultValue) {
+int getConfigInt(const YAML::Node &config, std::string key, int defaultValue, bool leaveIfNone) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -486,7 +496,7 @@ int getConfigInt(const YAML::Node &config, std::string key, int defaultValue) {
         return defaultValue;
     }
     if (!data.IsDefined()) {
-        setConfigValue(config, key, defaultValue);
+        if (!leaveIfNone) setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Scalar) {
@@ -505,7 +515,11 @@ int getConfigInt(const YAML::Node &config, std::string key, int defaultValue) {
     }
 }
 
-long getConfigLong(const YAML::Node &config, std::string key, long defaultValue) {
+int getConfigInt(const YAML::Node& config, std::string key, int defaultValue) {
+    return getConfigInt(config, key, defaultValue, false);
+}
+
+long getConfigLong(const YAML::Node &config, std::string key, long defaultValue, bool leaveIfNone) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -515,7 +529,7 @@ long getConfigLong(const YAML::Node &config, std::string key, long defaultValue)
         return defaultValue;
     }
     if (!data.IsDefined()) {
-        setConfigValue(config, key, defaultValue);
+        if (!leaveIfNone) setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Scalar) {
@@ -534,7 +548,11 @@ long getConfigLong(const YAML::Node &config, std::string key, long defaultValue)
     }
 }
 
-float getConfigFloat(const YAML::Node &config, std::string key, float defaultValue) {
+long getConfigLong(const YAML::Node& config, std::string key, long defaultValue) {
+    return getConfigLong(config, key, defaultValue, false);
+}
+
+float getConfigFloat(const YAML::Node &config, std::string key, float defaultValue, bool leaveIfNone) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -544,7 +562,7 @@ float getConfigFloat(const YAML::Node &config, std::string key, float defaultVal
         return defaultValue;
     }
     if (!data.IsDefined()) {
-        setConfigValue(config, key, defaultValue);
+        if (!leaveIfNone) setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Scalar) {
@@ -561,6 +579,10 @@ float getConfigFloat(const YAML::Node &config, std::string key, float defaultVal
     else {
         return v;
     }
+}
+
+float getConfigFloat(const YAML::Node& config, std::string key, float defaultValue) {
+    return getConfigFloat(config, key, defaultValue, false);
 }
 
 bool stringToBool(const std::string& str) {
@@ -587,7 +609,7 @@ std::string boolToStrDeco(bool b) {
     return "false";
 }
 
-bool getConfigBool(const YAML::Node &config, std::string key, bool defaultValue) {
+bool getConfigBool(const YAML::Node &config, std::string key, bool defaultValue, bool leaveIfNone) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -597,7 +619,7 @@ bool getConfigBool(const YAML::Node &config, std::string key, bool defaultValue)
         return defaultValue;
     }
     if (!data.IsDefined()) {
-        setConfigValue(config, key, defaultValue);
+        if (!leaveIfNone) setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Scalar) {
@@ -619,7 +641,11 @@ bool getConfigBool(const YAML::Node &config, std::string key, bool defaultValue)
     return v;
 }
 
-std::vector<std::string> getConfigVectorString(const YAML::Node &config, std::string key, std::vector<std::string> defaultValue) {
+bool getConfigBool(const YAML::Node& config, std::string key, bool defaultValue) {
+    return getConfigBool(config, key, defaultValue, false);
+}
+
+std::vector<std::string> getConfigVectorString(const YAML::Node &config, std::string key, std::vector<std::string> defaultValue, bool leaveIfNone) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -629,7 +655,7 @@ std::vector<std::string> getConfigVectorString(const YAML::Node &config, std::st
         return defaultValue;
     }
     if (!data.IsDefined()) {
-        setConfigValue(config, key, defaultValue);
+        if (!leaveIfNone) setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Sequence) {
@@ -647,7 +673,11 @@ std::vector<std::string> getConfigVectorString(const YAML::Node &config, std::st
     return v;
 }
 
-std::string getConfigString(const YAML::Node &config, std::string key, std::string defaultValue) {
+std::vector<std::string> getConfigVectorString(const YAML::Node& config, std::string key, std::vector<std::string> defaultValue) {
+    return getConfigVectorString(config, key, defaultValue, false);
+}
+
+std::string getConfigString(const YAML::Node &config, std::string key, std::string defaultValue, bool leaveIfNone) {
     YAML::Node data;
     try {
         data = getConfigValue(config, key);
@@ -658,7 +688,7 @@ std::string getConfigString(const YAML::Node &config, std::string key, std::stri
     }
 
     if (!data.IsDefined()) {
-        setConfigValue(config, key, defaultValue);
+        if (!leaveIfNone) setConfigValue(config, key, defaultValue);
         return defaultValue;
     }
     if (data.Type() != YAML::NodeType::Scalar) {
@@ -669,6 +699,10 @@ std::string getConfigString(const YAML::Node &config, std::string key, std::stri
     char* pEnd = NULL;
     std::string v = data.as<std::string>();
     return v;
+}
+
+std::string getConfigString(const YAML::Node& config, std::string key, std::string defaultValue) {
+    return getConfigString(config, key, defaultValue, false);
 }
 
 void removeConfigValue(YAML::Node &config, std::string path, bool throwException) {

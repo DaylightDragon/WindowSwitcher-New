@@ -33,6 +33,7 @@ struct Key {
 class KeySequence {
     private:
         std::vector<Key> keys;
+        long cooldownPerWindow = 1000 * 60 * 5; // 5 minutes
 
     public:
         KeySequence() {
@@ -45,26 +46,25 @@ class KeySequence {
         
         KeySequence(const YAML::Node &node) {
             this->keys = std::vector<Key>();
-            if (node.IsSequence()) {
-                //vector<YAML::Node> nodes = node.as<vector<YAML::Node>>();
-                //for (YAML::const_iterator at = node.begin(); at != node.end(); at++) {
-                //std::cout << node << std::endl << endl;
-                for (auto & at : node) {
-                    //std::cout << at << std::endl << endl;
-                    //std::cout << at->first.as<YAML::Node>() << std::endl;
-                    Key k = Key(
-                        getConfigString(at, "keyCode", "e"),
-                        getConfigBool(at, "enabled", true),
-                        getConfigInt(at, "beforeKeyPress", 0),
-                        getConfigInt(at, "holdFor", 2400),
-                        getConfigInt(at, "afterKeyPress", 10)
-                    );
-                    if (!getMapOfKeys().count(k.keyCode)) {
-                        if(k.keyCode != "EXAMPLE") addConfigLoadingMessage("WARNING | A key with a non-valid keycode \"" + k.keyCode + "\" was not processed.");
+            if (checkExists(node, "instructions")) {
+                YAML::Node instructions = getConfigValue(node, "instructions");
+                if (instructions.IsSequence()) {
+                    for (auto& at : instructions) {
+                        Key k = Key(
+                            getConfigString(at, "keyCode", "e"),
+                            getConfigBool(at, "enabled", true, true),
+                            getConfigInt(at, "beforeKeyPress", 0, true),
+                            getConfigInt(at, "holdFor", 2400, true),
+                            getConfigInt(at, "afterKeyPress", 100, true)
+                        );
+                        if (!getMapOfKeys().count(k.keyCode)) {
+                            if (k.keyCode != "EXAMPLE") addConfigLoadingMessage("WARNING | A key with a non-valid keycode \"" + k.keyCode + "\" was not processed.");
+                        }
+                        else keys.push_back(k);
                     }
-                    else keys.push_back(k);
                 }
             }
+            getConfigLong(node, "cooldownPerWindow_milliseconds", 1000 * 60 * 5);
         }
 
         KeySequence(std::string singleKeySimple) {

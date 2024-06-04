@@ -23,6 +23,8 @@
 #include "CustomHotkeys.h"
 #include "Data.h"
 
+std::string currentVersion = "2.3";
+
 // Pre-defining all classes and methods
 class WindowGroup;
 void deleteWindowGroup(WindowGroup* wg);
@@ -37,14 +39,9 @@ std::map<std::string, KeySequence*> knownOtherSequences = std::map<std::string, 
 std::vector<std::string> failedHotkeys;
 std::atomic<InputsInterruptionManager*> interruptionManager;
 
-std::vector<HWND> autoGroup1;
-std::vector<HWND> autoGroup2;
-std::vector<HWND> autoGroup3;
-std::vector<HWND> autoGroup4;
-std::vector<HWND> autoGroupAllWindows;
+std::map<int, std::vector<HWND>> autoGroups;
 
 // Permanent settings
-std::string currentVersion = "2.2";
 std::wstring rx_name = L"Roblox";
 std::string programPath;
 
@@ -54,6 +51,7 @@ int macroDelayInitial;
 int macroDelayBeforeSwitching;
 int macroDelayBetweenSwitchingAndFocus;
 int macroDelayAfterFocus;
+int delayWhenDoneAllWindows;
 int macroDelayAfterKeyPress;
 int macroDelayAfterKeyRelease;
 bool specialSingleWindowModeEnabled;
@@ -64,6 +62,8 @@ std::vector<std::string> defaultFastForegroundWindows;
 int sleepRandomnessPersent = 10;
 int sleepRandomnessMaxDiff = 40;
 
+int cellsDimensions = 2;
+
 // Runtime/status variables
 std::atomic<bool> stopMacroInput = true;
 bool initialConfigLoading = true;
@@ -71,6 +71,8 @@ bool hideNotMainWindows = false;
 int currentHangWindows = 0;
 std::wstring customReturnToFgName = L"";
 int restoredCustomWindowsAmount = 0;
+int globalGroupId = -100;
+int noGroupId = -200;
 
 // Permanent config variables
 int oldConfigValue_startAnything;
@@ -768,6 +770,7 @@ void startUsualMacroLoop() {
             //std::cout << std::dec;
             //key = i;
         performInputsEverywhere();
+        customSleep(delayWhenDoneAllWindows);
         // 8000
         /*for (int i = 0; i < 100; i++) {
             //customSleep(160);
@@ -832,7 +835,7 @@ void toggleMacroState() {
     }
 }
 
-void addWindowNoMatterWhat(HWND hwnd) {
+void addWindowToGlobalGroup(HWND hwnd) {
     if (checkHungWindow(hwnd)) return;
     bool openCmdLater = false;
     if (IsIconic(hwnd)) {
@@ -841,7 +844,81 @@ void addWindowNoMatterWhat(HWND hwnd) {
             openCmdLater = true;
         }
     }
-    autoGroupAllWindows.push_back(hwnd);
+    autoGroups[globalGroupId].push_back(hwnd);
+}
+
+struct MonitorData {
+    HMONITOR hMonitor;
+    RECT rect;
+    int monitorNum;
+};
+
+BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC, LPRECT, LPARAM lParam) {
+    MONITORINFO info = { sizeof(MONITORINFO) };
+    GetMonitorInfo(hMonitor, &info);
+
+    std::vector<MonitorData>* monitors = reinterpret_cast<std::vector<MonitorData>*>(lParam);
+    monitors->push_back({ hMonitor, info.rcMonitor, static_cast<int>(monitors->size()) });
+
+    return TRUE;
+}
+
+int GetMonitorNumber(HMONITOR hMonitor, const std::vector<MonitorData>& monitors) {
+    auto it = std::find_if(monitors.begin(), monitors.end(), [hMonitor](const MonitorData& data) {
+        return hMonitor == data.hMonitor;
+        });
+
+    return it != monitors.end() ? it->monitorNum : -1;
+}
+
+int GetWindowCell(HWND hwnd, int N) {
+    RECT windowRect;
+    GetWindowRect(hwnd, &windowRect);
+
+    // Get information for all monitors
+    std::vector<MonitorData> monitors;
+    EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, reinterpret_cast<LPARAM>(&monitors));
+
+    int cell = 0;
+    //std::cout << monitors.size() << " monitors" << std::endl;
+    for (int monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
+        const MonitorData& monitorData = monitors[monitorIndex];
+        RECT monitorRect = monitorData.rect;
+
+        int totalCells = N * N;
+
+        int cellWidth = (monitorRect.right - monitorRect.left) / N;
+        int cellHeight = (monitorRect.bottom - monitorRect.top) / N;
+
+        POINT windowCenter;
+        windowCenter.x = (windowRect.left + windowRect.right) / 2; //  - monitorRect.left
+        windowCenter.y = (windowRect.top + windowRect.bottom) / 2; //  - monitorRect.top
+
+        //std::cout << "monitorRect: X " << monitorRect.left << " to " << monitorRect.right << ", Y " << monitorRect.top << " to " << monitorRect.bottom << std::endl;
+        //std::cout << "windowCenter: " << windowCenter.x << " " << windowCenter.y << std::endl;
+
+        bool windowInThisMonitor = PtInRect(&monitorRect, windowCenter);
+        //bool windowInThisMonitor = monitorRect.
+        bool checkingLastMonitor = monitorIndex + 1 >= monitors.size();
+
+        if (windowInThisMonitor || checkingLastMonitor) {
+            if (!windowInThisMonitor && checkingLastMonitor) {
+                // fully to the right, weird case, can also not do the thing below
+                cell -= 1;
+            }
+            int cellRow = (windowCenter.y - monitorRect.top) / cellHeight;
+            int cellCol = (windowCenter.x - monitorRect.left) / cellWidth;
+            //std::cout << "Extra: " << -monitorRect.left << " " << -monitorRect.left << std::endl;
+            //std::cout << "Row: " << windowCenter.y << " / " << cellHeight << " = " << (windowCenter.y) / cellHeight << std::endl;
+            //std::cout << "Col: " << windowCenter.x << " / " << cellWidth << " = " << (windowCenter.x) / cellWidth << std::endl;
+            int monitorOffset = monitorIndex * totalCells;
+            cell += monitorOffset + cellRow * N + cellCol;
+            //std::cout << "Row Col " << cellRow << " " << cellCol << std::endl;
+            break;
+        }
+    }
+
+    return cell;
 }
 
 void distributeRxHwndsToGroups(HWND hwnd) {
@@ -870,12 +947,19 @@ void distributeRxHwndsToGroups(HWND hwnd) {
     //if (IsHungAppWindow(hwnd)) std::cout << "Hang up window 3" << endl;
     //if (r.left == -7 && r.top == 0 && r.right == 967 && r.bottom == 527) autoGroup1.push_back(hwnd); // Explorer window
     //std::cout << r.right - r.left << "   " << r.bottom - r.top << endl;
-    if (r.right - r.left == desktopX / 2 && (r.bottom - r.top == 638 || r.bottom - r.top == 631)) { // 631 is considered as height when at the top, check on different Windows versions and
-        if (r.left == 0 && r.top == 0) autoGroup1.push_back(hwnd); // actual sizes         // find out which one doesn't work and change to + or - border size //TODO
-        else if (r.left == desktopX / 2 && r.top == 0) autoGroup2.push_back(hwnd);
-        else if (r.left == 0 && r.top == desktopY - 638) autoGroup3.push_back(hwnd);
-        else if (r.left == desktopX / 2 && r.top == desktopY - 638) autoGroup4.push_back(hwnd);
-    }
+    
+    std::cout << "Getting cell...\n";
+    int cell = GetWindowCell(hwnd, cellsDimensions);
+    std::cout << cell << '\n';
+    autoGroups[cell].push_back(hwnd);
+    std::cout << "Added\n";
+
+    //if (r.right - r.left == desktopX / 2 && (r.bottom - r.top == 638 || r.bottom - r.top == 631)) { // 631 is considered as height when at the top, check on different Windows versions and
+    //    if (r.left == 0 && r.top == 0) autoGroup1.push_back(hwnd); // actual sizes         // find out which one doesn't work and change to + or - border size //TODO
+    //    else if (r.left == desktopX / 2 && r.top == 0) autoGroup2.push_back(hwnd);
+    //    else if (r.left == 0 && r.top == desktopY - 638) autoGroup3.push_back(hwnd);
+    //    else if (r.left == desktopX / 2 && r.top == desktopY - 638) autoGroup4.push_back(hwnd);
+    //}
 
     if (openCmdLater) {
         /*std::cout << "restoring\n";
@@ -917,7 +1001,7 @@ static BOOL CALLBACK rxConnectivityCompletelyAllCallback(HWND hwnd, LPARAM lpara
     //std::string str(ws.begin(), ws.end());
 
     if (ws == rx_name) {
-        addWindowNoMatterWhat(hwnd);
+        addWindowToGlobalGroup(hwnd);
     }
 
     return TRUE;
@@ -941,28 +1025,40 @@ int createSingleConnectedGroup(std::vector<HWND>* windows) {
     return amount;
 }
 
-int createConnectedGroups() {
+int createConnectedCellGroups() {
     int amount = 0;
-    amount += createSingleConnectedGroup(&autoGroup4);
-    amount += createSingleConnectedGroup(&autoGroup3);
-    amount += createSingleConnectedGroup(&autoGroup2);
-    amount += createSingleConnectedGroup(&autoGroup1);
+    for (auto it = autoGroups.begin(); it != autoGroups.end(); ++it) {
+        if (it->first != globalGroupId) {
+            amount += createSingleConnectedGroup(&(it->second));
+        }
+    }
     return amount;
 }
 
 int createConnectedGroupsForCompletelyAll() {
     int amount = 0;
-    amount += createSingleConnectedGroup(&autoGroupAllWindows);
+    amount += createSingleConnectedGroup(&(autoGroups[globalGroupId]));
     return amount;
 }
 
 void connectAllQuarters() {
     std::cout << "Connecting RBX windows...\n";
-    autoGroup1.clear(); autoGroup2.clear(); autoGroup3.clear(); autoGroup4.clear();
+    
+    // clearing all except the global one
+    for (auto it = autoGroups.begin(); it != autoGroups.end();) {
+        if (it->first != globalGroupId) {
+            it->second.clear();
+            it = autoGroups.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+
     currentHangWindows = 0;
     EnumWindows(rxConnectivityCallback, NULL);
     if (currentHangWindows > 0) std::cout << "Found " << currentHangWindows << " window(s) that isn't (aren't) responding, skipping them\n";
-    int amount = createConnectedGroups();
+    int amount = createConnectedCellGroups();
     if (amount > 0) {
         std::cout << "Successfully connected " << amount << " window";
         if (amount > 1) std::cout << "s";
@@ -975,7 +1071,7 @@ void connectAllQuarters() {
 
 void connectAllRbxsNoMatterWhat() {
     std::cout << "Connecting Absolutely all RBX windows...\n";
-    autoGroupAllWindows.clear();
+    autoGroups[globalGroupId].clear();
     currentHangWindows = 0;
     EnumWindows(rxConnectivityCompletelyAllCallback, NULL);
     if (currentHangWindows > 0) std::cout << "Found " << currentHangWindows << " window(s) that isn't (aren't) responding, skipping them\n";
@@ -1107,16 +1203,17 @@ void setGroupKey(HWND h) {
         std::cout << "Enter the key (Eng only, lowercase, no combinations) or the extra sequence name with \"!\" in the beggining:\n";
         std::string keyName = "";
         std::getline(std::cin, keyName);
-        if (keyName.rfind("!", 0) == 0 && groupToKey.count(referenceToGroup[h])) {
+        if (keyName.rfind("!", 0) == 0) { //  && groupToKey.count(referenceToGroup[h]) // why was this here?
             groupToKey[referenceToGroup[h]] = knownOtherSequences[keyName.substr(1)];
+            std::cout << "Have set the sequence \"" << keyName.substr(1) << "\" for that window's group" << std::endl;
         }
         else if (mapOfKeys.count(keyName)) {
             groupToKey[referenceToGroup[h]] = &KeySequence(keyName); // then use as mapOfKeys[keyName] // important comment
-            std::cout << "Set the key for that group" << std::endl;
+            std::cout << "Have set the key for that group" << std::endl;
             SetForegroundWindow(h);
         }
         else {
-            std::cout << "Such key (or sequence name) doesn't esist or isn't supported yet!" << std::endl;
+            std::cout << "Such key (or sequence name) doesn't exist or isn't supported yet!" << std::endl;
         }
     }
     else {
@@ -1132,7 +1229,8 @@ YAML::Node getDefaultSequenceList() {
     setConfigValue(firstKey, "holdFor", 2400);
     setConfigValue(firstKey, "afterKeyPress", 10);
 
-    YAML::Node keyExample = YAML::Clone(firstKey);
+    //YAML::Node keyExample = YAML::Clone(firstKey); // cool thing
+    YAML::Node keyExample = YAML::Node();
     setConfigValue(keyExample, "keyCode", "EXAMPLE");
     setConfigValue(keyExample, "enabled", false);
 
@@ -1140,7 +1238,19 @@ YAML::Node getDefaultSequenceList() {
     list.push_back(firstKey);
     list.push_back(keyExample);
 
-    return list;
+    YAML::Node node = YAML::Node();
+    node["instructions"] = list;
+    return node;
+}
+
+YAML::Node getDefaultExtraKeySequences() {
+    YAML::Node node = YAML::Node(std::map<std::string, YAML::Node>());
+    
+    YAML::Node example = YAML::Node();
+    example["instructions"] = std::vector<YAML::Node>();
+    
+    node["example"] = example;
+    return node;
 }
 
 void resetMainSequence(const YAML::Node &config) {
@@ -1229,8 +1339,8 @@ void readDefaultInterruptionManager(const YAML::Node& config) {
     readSimpleInteruptionManagerSettings(config);
 }
 
-void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig) {
-    addConfigLoadingMessage("INFO | The config was updated from version 2.0 to 2.1");
+void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig, bool firstUpdate) {
+    if (firstUpdate) addConfigLoadingMessage("INFO | The config was updated from version 2.0 to 2.1");
 
     setConfigValue(config, "settings/macro/general/initialDelayBeforeFirstIteration", getConfigInt(config, "settings/macro/delaysInMilliseconds/initialDelayBeforeFirstIteration", 100));
     setConfigValue(config, "settings/macro/general/delayBeforeSwitchingWindow", 0);
@@ -1261,6 +1371,51 @@ void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig) {
     removeConfigValue(config, "settings/macro/defaultKey", true);
 }
 
+YAML::Node* updateKeySequence2_2_TO_2_3(YAML::Node& sequence) {
+    YAML::Node* node = new YAML::Node();
+    std::cout << "sequence: " << sequence.IsSequence() << std::endl;
+    if (sequence.IsSequence()) {
+        setConfigValue(*node, "instructions", sequence.as<std::vector<YAML::Node>>());
+    }
+    return node;
+}
+
+void updateConfig2_2_TO_2_3(YAML::Node& config, bool wrongConfig, bool firstUpdate) {
+    if (firstUpdate) addConfigLoadingMessage("INFO | The config was updated from version 2.2 to 2.3");
+
+    YAML::Node* newMainSeq = updateKeySequence2_2_TO_2_3(getConfigValue(config, "settings/macro/mainKeySequence"));
+    setConfigValue(config, "settings/macro/mainKeySequence", *newMainSeq);
+    delete newMainSeq;
+
+    if (checkExists(config, "settings/macro/extraKeySequences")) {
+        YAML::Node extraSequences = getConfigValue(config, "settings/macro/extraKeySequences");
+        std::map<std::string, YAML::Node> newValues = std::map<std::string, YAML::Node>();
+        bool replaceValues = false;
+        if (extraSequences.IsSequence() && extraSequences.as<std::vector<YAML::Node>>().size() > 0) {
+            int i = 0;
+            for (auto& seq : extraSequences) {
+                if (seq.IsMap()) {
+                    for (auto& keyValue : seq) {
+                        std::string name = keyValue.first.as<std::string>();
+                        YAML::Node value = keyValue.second;
+                        std::cout << "name " << name << " value " << value << std::endl;
+                        YAML::Node* newNode = updateKeySequence2_2_TO_2_3(value);
+                        newValues[name] = *newNode;
+                        delete newNode;
+                    }
+                }
+                //newValues["unnamed_" + std::to_string(i)] = *updateKeySequence2_2_TO_2_3(seq);
+            }
+            replaceValues = true;
+        }
+
+        if (replaceValues) {
+            setConfigValue(config, "settings/macro/extraKeySequences", YAML::Node(newValues));
+            //std::cout << "SetNewExtraValues\n";
+        }
+    }
+}
+
 enum ConfigType {
     MAIN_CONFIG,
     KEYBINDS_CONFIG
@@ -1289,19 +1444,28 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         catch (const YAML::Exception& e) {
             oldConfigVersion = "2.0";
         }
+
+        bool firstUpdate = true;
         if (oldConfigVersion == "2.0") {
-            updateConfig2_0_TO_2_1(config, wrongConfig);
+            updateConfig2_0_TO_2_1(config, wrongConfig, firstUpdate);
+            firstUpdate = false;
             oldConfigVersion = "2.1";
         }
         if (oldConfigVersion == "2.1") {
             // no refactoring
             oldConfigVersion = "2.2";
         }
+        if (oldConfigVersion == "2.2") {
+            updateConfig2_2_TO_2_3(config, wrongConfig, firstUpdate);
+            firstUpdate = false;
+            oldConfigVersion = "2.3";
+        }
     }
 
     macroDelayInitial = getConfigInt(config, "settings/macro/general/initialDelayBeforeFirstIteration", 100);
     macroDelayBeforeSwitching = getConfigInt(config, "settings/macro/general/delayBeforeSwitchingWindow", 0);
     macroDelayAfterFocus = getConfigInt(config, "settings/macro/general/delayAfterSwitchingWindow", 200);
+    delayWhenDoneAllWindows = getConfigInt(config, "settings/macro/general/delayWhenDoneAllWindows", 100);
     macroDelayBetweenSwitchingAndFocus = getConfigInt(config, "settings/macro/general/settingsChangeOnlyWhenReallyNeeded/afterSettingForegroundButBeforeSettingFocus", 10);
     specialSingleWindowModeEnabled = getConfigBool(config, "settings/macro/general/specialSingleWindowMode/enabled", false);
     specialSingleWindowModeKeyCode = getConfigString(config, "settings/macro/general/specialSingleWindowMode/keyCode", defaultMacroKey);
@@ -1326,7 +1490,7 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
     }
 
     // extra sequences
-    if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", std::vector<YAML::Node>());
+    if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", getDefaultExtraKeySequences());
     YAML::Node extraSequences = getConfigValue(config, "settings/macro/extraKeySequences");
     if (extraSequences.IsMap()) {
         //for (auto& otherSeq : knownOtherSequences) {
@@ -1636,6 +1800,40 @@ void macroDelayModificationLoop() {
     //std::cout << "Done waiting\n";
 }
 
+void testHotkey() {
+    HWND hwnd = GetForegroundWindow();
+
+    // The number of cells in each row/column of the grid
+    int N = 3;
+    int cell = GetWindowCell(hwnd, N);
+
+    std::cout << cell << std::endl;
+    return;
+
+    RECT windowSize = { NULL };
+    DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &windowSize, sizeof(RECT));
+    // GetWindowRect(hwnd, &r)
+    //std::cout << r.left << " " << r.top << " " << r.right << " " << r.bottom << " " << endl;
+
+    RECT desktop;
+    SystemParametersInfo(SPI_GETWORKAREA, 0, &desktop, 0);
+    int desktopX = desktop.right;
+    int desktopY = desktop.bottom;
+
+    //if (IsHungAppWindow(hwnd)) std::cout << "Hang up window 3" << endl;
+    //if (r.left == -7 && r.top == 0 && r.right == 967 && r.bottom == 527) autoGroup1.push_back(hwnd); // Explorer window
+    //std::cout << r.right - r.left << "   " << r.bottom - r.top << endl;
+    //if (r.right - r.left == desktopX / 2 && (r.bottom - r.top == 638 || r.bottom - r.top == 631)) { // 631 is considered as height when at the top, check on different Windows versions and
+    //    if (r.left == 0 && r.top == 0) autoGroup1.push_back(hwnd); // actual sizes         // find out which one doesn't work and change to + or - border size //TODO
+    //    else if (r.left == desktopX / 2 && r.top == 0) autoGroup2.push_back(hwnd);
+    //    else if (r.left == 0 && r.top == desktopY - 638) autoGroup3.push_back(hwnd);
+    //    else if (r.left == desktopX / 2 && r.top == desktopY - 638) autoGroup4.push_back(hwnd);
+    //}
+
+    std::cout << "X " << windowSize.left << " " << windowSize.right << " , Y " << windowSize.top << " " << windowSize.bottom << std::endl;
+    std::cout << "Screen " << desktopX << " " << desktopY << std::endl;
+}
+
 void terminationOnFailure() {
     HWND hwnd = GetConsoleWindow();
     if (hwnd) {
@@ -1852,10 +2050,11 @@ int actualMain(int argc, char* argv[]) {
                 }
             }
             if (msg.wParam == 21) { // real debug
-                std::cout << "Waiting2...\n";
+                testHotkey();
+                //std::cout << "Waiting2...\n";
                 //std::unique_lock<std::mutex> macroWaitLock = std::unique_lock<std::mutex>(std::mutex());
-                macroWaitCv.wait(*macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
-                std::cout << "Done2\n";
+                //macroWaitCv.wait(*macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
+                //std::cout << "Done2\n";
             }
             hungWindowsAnnouncement();
         }
