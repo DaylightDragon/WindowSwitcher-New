@@ -799,11 +799,14 @@ bool checkCooldownActiveAndRefresh(HWND hwnd) {
     bool cooldown = timePassedSince < keySeq->getCooldownPerWindow();
     //std::cout << timePassedSince << " " << keySeq->getCooldownPerWindow() << std::endl;
 
+    std::cout << hwnd << '\n';
+    if(cooldown) std::cout << timePassedSince << '\n';
     if (!cooldown) wi->refreshTimestamp();
     return cooldown;
 }
 
 void focusAndSendSequence(HWND hwnd) { // find this
+    std::cout << "Swapped to " << hwnd << std::endl;
     /*int key = mapOfKeys[defaultMacroKey]; // 0x12
     //if(specialSingleWindowModeKeyCode)
     if (groupToKey.count(referenceToGroup[hwnd])) {
@@ -814,9 +817,18 @@ void focusAndSendSequence(HWND hwnd) { // find this
 
     bool shouldRestartSequence = true;
     while (shouldRestartSequence) {
-        //bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice
+        if (stopMacroInput.load()) return;
+        waitIfInterrupted();
+        if (stopMacroInput.load()) return;
+        bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice
         //std::cout << cooldown << std::endl;
-        //if (cooldown) return;
+        if (cooldown) {
+            customSleep(max(10, min(100, macroDelayAfterFocus)));
+            continue;
+        }
+        if (stopMacroInput.load()) return;
+        waitIfInterrupted();
+        if (stopMacroInput.load()) return;
 
         SetForegroundWindow(hwnd);
         customSleep(macroDelayBetweenSwitchingAndFocus);
@@ -1385,18 +1397,14 @@ void readSimpleInteruptionManagerSettings(const YAML::Node& config) {
 }
 
 void readNewInterruptionManager(const YAML::Node& config) {
-    std::cout << "AAAAA2.0.2" << std::endl;
     resetInterruptionManager(config);
-    std::cout << "AAAAA2.0.3" << std::endl;
     interruptionManager = new InputsInterruptionManager();
-    std::cout << "AAAAA2.0.4" << std::endl;
     //std::cout << "readNewInterruptionManager\n";
 
     interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases"), KEYBOARD);
     interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases"), MOUSE);
     interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases"), ANY_INPUT);
 
-    std::cout << "AAAAA2.0.5" << std::endl;
     readSimpleInteruptionManagerSettings(config);
 
     //std::cout << interruptionManager << '\n';
@@ -1568,8 +1576,6 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         readDefaultMainSequence(config);
     }
 
-    std::cout << "AAAAA1" << std::endl;
-
     // extra sequences
     if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", getDefaultExtraKeySequences());
     YAML::Node extraSequences = getConfigValue(config, "settings/macro/extraKeySequences");
@@ -1583,52 +1589,41 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         }
     }
 
-    std::cout << "AAAAA2" << std::endl;
-
     // if no yaml structure errors
     if (!wrongConfig) {
         // resetting input interruption manager and reading what config has
-        std::cout << "AAAAA2.0.1" << std::endl;
         readNewInterruptionManager(config);
         bool nothingKeyboard = interruptionManager.load()->getConfigurations(KEYBOARD)->size() == 0;
         bool nothingMouse = interruptionManager.load()->getConfigurations(MOUSE)->size() == 0;
-        std::cout << "AAAAA2.1.1" << std::endl;
         // if there is nothing
         if (nothingKeyboard || nothingMouse) {
             //std::cout << "Nothing\n";
             // set default values
-            std::cout << "AAAAA2.1.2" << std::endl;
             YAML::Node* defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(KEYBOARD);
             if (nothingKeyboard) setConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases", *defaultList);
             delete defaultList;
 
-            std::cout << "AAAAA2.1.3" << std::endl;
             defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(MOUSE);
             if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases", *defaultList);
             delete defaultList;
 
-            std::cout << "AAAAA2.1.4" << std::endl;
             defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(ANY_INPUT);
             if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases", *defaultList);
             delete defaultList;
 
-            std::cout << "AAAAA2.1.5" << std::endl;
 
             // reset the manager and read the yaml object again
             readNewInterruptionManager(config);
         }
     }
     else {
-        std::cout << "AAAAA2.2.1" << std::endl;
         readDefaultMainSequence(config);
-        std::cout << "AAAAA2.2.2" << std::endl;
         readDefaultInterruptionManager(config);
     }
 
     usePrimitiveInterruptionAlgorythm = getConfigBool(config, "settings/macro/interruptions/advanced/primitiveInterruptionsAlgorythm/enabled", true);
     primitiveWaitInterval = getConfigInt(config, "settings/macro/interruptions/advanced/primitiveInterruptionsAlgorythm/checkEvery_milliseconds", 100);
 
-    std::cout << "AAAAA3" << std::endl;
 
     std::vector<std::string> localDefaultFastForegroundWindows;
     localDefaultFastForegroundWindows.push_back("Roblox");
@@ -1686,7 +1681,6 @@ bool loadConfig(ConfigType type) {
         
         YAML::Node newConfig;
 
-        std::cout << "Config type" << std::endl;
         switch (type)
         {
         case MAIN_CONFIG:
@@ -1865,10 +1859,10 @@ void MouseHookFunc() {
 }
 
 void notifyTheMacro() {
-    std::cout << "Value on notifyTheMacro(): " << interruptionManager.load()->getUntilNextMacroRetryAtomic().load() << std::endl;
+    //std::cout << "Value on notifyTheMacro(): " << interruptionManager.load()->getUntilNextMacroRetryAtomic().load() << std::endl;
     //interruptedRightNow.store(false);
     macroWaitCv.notify_all();
-    std::cout << "Notified" << std::endl;
+    //std::cout << "Notified" << std::endl;
 }
 
 void storeCurDelay(int delay) {
