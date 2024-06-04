@@ -57,6 +57,8 @@ int macroDelayAfterKeyRelease;
 bool specialSingleWindowModeEnabled;
 std::string specialSingleWindowModeKeyCode;
 std::vector<std::string> defaultFastForegroundWindows;
+bool usePrimitiveInterruptionAlgorythm = false;
+int primitiveWaitInterval = 100;
 
 // Input randomness
 int sleepRandomnessPersent = 10;
@@ -660,6 +662,12 @@ std::atomic<bool>& getStopMacroInput() {
     return stopMacroInput;
 }
 
+//std::atomic<bool> interruptedRightNow(false);
+
+//std::atomic<bool>& getInterruptedRightNow() {
+//    return interruptedRightNow;
+//}
+
 bool waitIfInterrupted() {
     if (interruptionManager == nullptr || !interruptionManager.load()->isModeEnabled().load()) return false;
     int waitFor = interruptionManager.load()->getUntilNextMacroRetryAtomic().load();
@@ -667,7 +675,30 @@ bool waitIfInterrupted() {
     if (interrupted) {
         //std::cout << "Waiting...\n";
         //std::unique_lock<std::mutex> macroWaitLock = std::unique_lock<std::mutex>(std::mutex());
-        macroWaitCv.wait(*macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
+
+        //std::cout << "Actually paused\n" << std::endl;
+        //auto lock = std::unique_lock<std::mutex>{ macroWaitMutex, std::defer_lock };
+        //macroWaitCv.wait_for(lock, std::chrono::milliseconds(10000), [] { return !interruptedRightNow.load(); }); // (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0)
+        ////std::cout << "Waiting " << interruptionManager.load()->getUntilNextMacroRetryAtomic().load() << '\n';
+        ////return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0);
+        //std::cout << "Actually unpaused\n" << std::endl;
+
+        if (!usePrimitiveInterruptionAlgorythm) {
+            if (macroWaitMutex == nullptr) {
+                macroWaitMutex = new std::mutex();
+            }
+            if (macroWaitLock == nullptr) {
+                macroWaitLock = new std::unique_lock<std::mutex>{ *macroWaitMutex }; // , std::defer_lock
+            }
+            //auto lock = std::unique_lock<std::mutex>{ *macroWaitMutex};
+            macroWaitCv.wait(*macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
+        }
+        else {
+            while (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0) {
+                Sleep(primitiveWaitInterval);
+            }
+        }
+
         //interruptionManager.load()->getConditionVariable().wait(interruptionManager.load()->getLock(), [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
         //std::cout << "Done waiting\n";
     }
@@ -783,9 +814,9 @@ void focusAndSendSequence(HWND hwnd) { // find this
 
     bool shouldRestartSequence = true;
     while (shouldRestartSequence) {
-        bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice
+        //bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice
         //std::cout << cooldown << std::endl;
-        if (cooldown) return;
+        //if (cooldown) return;
 
         SetForegroundWindow(hwnd);
         customSleep(macroDelayBetweenSwitchingAndFocus);
@@ -1354,14 +1385,18 @@ void readSimpleInteruptionManagerSettings(const YAML::Node& config) {
 }
 
 void readNewInterruptionManager(const YAML::Node& config) {
+    std::cout << "AAAAA2.0.2" << std::endl;
     resetInterruptionManager(config);
+    std::cout << "AAAAA2.0.3" << std::endl;
     interruptionManager = new InputsInterruptionManager();
+    std::cout << "AAAAA2.0.4" << std::endl;
     //std::cout << "readNewInterruptionManager\n";
 
     interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases"), KEYBOARD);
     interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases"), MOUSE);
     interruptionManager.load()->initType(getConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases"), ANY_INPUT);
 
+    std::cout << "AAAAA2.0.5" << std::endl;
     readSimpleInteruptionManagerSettings(config);
 
     //std::cout << interruptionManager << '\n';
@@ -1533,6 +1568,8 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         readDefaultMainSequence(config);
     }
 
+    std::cout << "AAAAA1" << std::endl;
+
     // extra sequences
     if (!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", getDefaultExtraKeySequences());
     YAML::Node extraSequences = getConfigValue(config, "settings/macro/extraKeySequences");
@@ -1546,36 +1583,52 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         }
     }
 
+    std::cout << "AAAAA2" << std::endl;
+
     // if no yaml structure errors
     if (!wrongConfig) {
         // resetting input interruption manager and reading what config has
+        std::cout << "AAAAA2.0.1" << std::endl;
         readNewInterruptionManager(config);
         bool nothingKeyboard = interruptionManager.load()->getConfigurations(KEYBOARD)->size() == 0;
         bool nothingMouse = interruptionManager.load()->getConfigurations(MOUSE)->size() == 0;
+        std::cout << "AAAAA2.1.1" << std::endl;
         // if there is nothing
         if (nothingKeyboard || nothingMouse) {
             //std::cout << "Nothing\n";
             // set default values
+            std::cout << "AAAAA2.1.2" << std::endl;
             YAML::Node* defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(KEYBOARD);
             if (nothingKeyboard) setConfigValue(config, "settings/macro/interruptions/keyboard/manyInputsCases", *defaultList);
             delete defaultList;
 
+            std::cout << "AAAAA2.1.3" << std::endl;
             defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(MOUSE);
             if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/mouse/manyInputsCases", *defaultList);
             delete defaultList;
 
+            std::cout << "AAAAA2.1.4" << std::endl;
             defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(ANY_INPUT);
             if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases", *defaultList);
             delete defaultList;
+
+            std::cout << "AAAAA2.1.5" << std::endl;
 
             // reset the manager and read the yaml object again
             readNewInterruptionManager(config);
         }
     }
     else {
+        std::cout << "AAAAA2.2.1" << std::endl;
         readDefaultMainSequence(config);
+        std::cout << "AAAAA2.2.2" << std::endl;
         readDefaultInterruptionManager(config);
     }
+
+    usePrimitiveInterruptionAlgorythm = getConfigBool(config, "settings/macro/interruptions/advanced/primitiveInterruptionsAlgorythm/enabled", true);
+    primitiveWaitInterval = getConfigInt(config, "settings/macro/interruptions/advanced/primitiveInterruptionsAlgorythm/checkEvery_milliseconds", 100);
+
+    std::cout << "AAAAA3" << std::endl;
 
     std::vector<std::string> localDefaultFastForegroundWindows;
     localDefaultFastForegroundWindows.push_back("Roblox");
@@ -1633,6 +1686,7 @@ bool loadConfig(ConfigType type) {
         
         YAML::Node newConfig;
 
+        std::cout << "Config type" << std::endl;
         switch (type)
         {
         case MAIN_CONFIG:
@@ -1771,10 +1825,11 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
-bool registerHooksInDebug = true;
+bool registerKeyboardHookInDebug = false;
+bool registerKeyboardMouseInDebug = true;
 
 void keyboardHookFunc() {
-    if (registerHooksInDebug || !debugMode) {
+    if (registerKeyboardHookInDebug || !debugMode) {
         keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, NULL, 0);
         if (keyboardHook == NULL) std::cout << "Failed to register the keyboard hook for macro pauses" << std::endl;
 
@@ -1792,7 +1847,7 @@ void keyboardHookFunc() {
 }
 
 void MouseHookFunc() {
-    if (registerHooksInDebug || !debugMode) {
+    if (registerKeyboardMouseInDebug || !debugMode) {
         mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, NULL, 0);
         if (mouseHook == NULL) std::cout << "Failed to register the mouse hook for macro pauses" << std::endl;
 
@@ -1810,7 +1865,10 @@ void MouseHookFunc() {
 }
 
 void notifyTheMacro() {
+    std::cout << "Value on notifyTheMacro(): " << interruptionManager.load()->getUntilNextMacroRetryAtomic().load() << std::endl;
+    //interruptedRightNow.store(false);
     macroWaitCv.notify_all();
+    std::cout << "Notified" << std::endl;
 }
 
 void storeCurDelay(int delay) {
@@ -1830,6 +1888,7 @@ void macroDelayModificationLoop() {
             if (curValue == 0) {
                 storeCurDelay(curValue);
                 notifyTheMacro();
+                //interruptedRightNow.store(false);
                 if(interruptionManager.load()->getInformOnEvents() && !getStopMacroInput().load()) std::cout << "Unpaused\n";
                 
             }
@@ -1881,9 +1940,8 @@ void testHotkey() {
 void terminationOnFailure() {
     HWND hwnd = GetConsoleWindow();
     if (hwnd) {
-        if (IsIconic(hwnd)) {
-            ShowWindow(hwnd, SW_RESTORE);
-        }
+        ShowWindow(hwnd, SW_HIDE);
+        ShowWindow(hwnd, SW_RESTORE);
     }
 
     std::cout << "[!!!] The application encountered an error that it doesn't want to ingnore, so it has exited." << std::endl;
@@ -1925,8 +1983,7 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exceptionInfo) {
 }
 
 void initSomeValues() {
-    macroWaitMutex = new std::mutex();
-    macroWaitLock = new std::unique_lock<std::mutex>{ *macroWaitMutex };
+    
 }
 
 int actualMain(int argc, char* argv[]) {
@@ -1950,6 +2007,7 @@ int actualMain(int argc, char* argv[]) {
     programPath = argv[0];
     initializeRandom();
     reloadConfigs();
+    std::cout << "Config Done" << std::endl;
     rememberInitialPermanentSettings();
     registerHotkeys();
     printConfigLoadingMessages();

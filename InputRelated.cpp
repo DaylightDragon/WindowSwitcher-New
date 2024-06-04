@@ -368,7 +368,7 @@ class InputsInterruptionManager {
         }
 
         void initType(const YAML::Node& node, InterruptionInputType type) {
-            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
+            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex, std::adopt_lock);
 
             //cout << "Init " << inputTypeToString(type) << endl;
 
@@ -395,6 +395,7 @@ class InputsInterruptionManager {
                 if (informOnEvents.load()) {
                     if (!getStopMacroInput().load()) {
                         std::cout << "Paused for " << delay << " seconds...\n";
+                        //getInterruptedRightNow().store(true);
                     }
                 }
             }
@@ -410,7 +411,7 @@ class InputsInterruptionManager {
         }*/
         
         void checkForManyInputsOnNew(InterruptionInputType type) {
-            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
+            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex, std::adopt_lock);
 
             std::vector<std::chrono::steady_clock::time_point>* lastInputTimestamps = getLastTimestamps(type);
             std::vector<ManyInputsConfiguration>* confs = getConfigurations(type);
@@ -450,12 +451,12 @@ class InputsInterruptionManager {
 
         void addPendingSentInput(std::string key) {
             SentInput input = SentInput(key, std::chrono::steady_clock::now());
-            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
+            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex, std::adopt_lock);
             pendingSentInputs.push_back(input);
         }
 
         bool checkIsInputPending(std::string key) {
-            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex);
+            std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex, std::adopt_lock);
 
             bool result = false;
             

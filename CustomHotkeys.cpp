@@ -336,8 +336,8 @@ std::vector<KeybindInfo>* getDefaultKeybinds() {
     result->push_back(KeybindInfo(17, "Alt + G", "toggleSequenceMacro", "Start/stop the automatical sequence macro for game windows"));
     result->push_back(KeybindInfo(29, "Ctrl + Alt + G", "setMacroKeyOrSequenceForGroup", "Set the macro key (or sequence) for this group"));
     result->push_back(KeybindInfo(31, "Alt + H", "reloadAllConfigs", "Reload all configs (NO KEYBINDS RELOADING FOR NOW)"));
-    result->push_back(KeybindInfo(20, "Disable Alt + P", "showDebugListOfLinkedWindows", "Show the debug list of the linked windows").setHidden(true));
-    result->push_back(KeybindInfo(21, "Disable Alt + \\", "someTest", "Test").setHidden(true));
+    result->push_back(KeybindInfo(20, "Disabled Alt + P", "showDebugListOfLinkedWindows", "Show the debug list of the linked windows").setHidden(true));
+    result->push_back(KeybindInfo(21, "Disabled Alt + \\", "someTest", "Test").setHidden(true));
 
     return result;
 }
