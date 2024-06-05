@@ -694,7 +694,7 @@ bool waitIfInterrupted() {
             macroWaitCv.wait(*macroWaitLock, [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
         }
         else {
-            while (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0) {
+            while (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() > 0) {
                 Sleep(primitiveWaitInterval);
             }
         }
@@ -787,26 +787,51 @@ bool performASequence(HWND w) {
     return shouldRestartSequence;
 }
 
-bool checkCooldownActiveAndRefresh(HWND hwnd) {
+WindowInfo* getWindowInfoFromHandle(HWND hwnd) {
+    WindowInfo* wi = nullptr;
+
     WindowGroup* wg = handleToGroup[hwnd];
-    if (wg == nullptr) return false;
-    WindowInfo* wi = wg->getWindowInfoFromHandle(hwnd);
+    if (wg != nullptr) {
+        wi = wg->getWindowInfoFromHandle(hwnd);
+    }
+
+    return wi;
+}
+
+KeySequence* getKeySequenceFromHandle(HWND hwnd) {
+    KeySequence* keySeq = nullptr;
+
+    WindowGroup* wg = handleToGroup[hwnd];
+    if (wg != nullptr) {
+        WindowInfo* wi = wg->getWindowInfoFromHandle(hwnd);
+        if (wi != nullptr) {
+            keySeq = mainSequence;
+            if (groupToSequence.count(wg)) keySeq = groupToSequence[wg];
+        }
+    }
+
+    return keySeq;
+}
+
+bool checkCooldownActiveAndRefresh(HWND hwnd) {
+    WindowInfo* wi = getWindowInfoFromHandle(hwnd);
     if (wi == nullptr) return false;
-    KeySequence* keySeq = mainSequence;
-    if (groupToSequence.count(wg)) keySeq = groupToSequence[wg];
+    KeySequence* keySeq = getKeySequenceFromHandle(hwnd);
+    if (keySeq == nullptr) return false;
 
     auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count();
     bool cooldown = timePassedSince < keySeq->getCooldownPerWindow();
     //std::cout << timePassedSince << " " << keySeq->getCooldownPerWindow() << std::endl;
 
-    std::cout << hwnd << '\n';
-    if(cooldown) std::cout << timePassedSince << '\n';
+    //std::cout << hwnd << '\n';
+    //if(cooldown) std::cout << timePassedSince << '\n';
     if (!cooldown) wi->refreshTimestamp();
     return cooldown;
 }
 
 void focusAndSendSequence(HWND hwnd) { // find this
-    std::cout << "Swapped to " << hwnd << std::endl;
+    //std::cout << "Swapped to " << hwnd << std::endl;
+
     /*int key = mapOfKeys[defaultMacroKey]; // 0x12
     //if(specialSingleWindowModeKeyCode)
     if (groupToKey.count(referenceToGroup[hwnd])) {
@@ -814,6 +839,8 @@ void focusAndSendSequence(HWND hwnd) { // find this
     }*/
     //std::cout << "test\n";
     //std::cout << "key: " << key << endl;
+
+    KeySequence* keySeq = getKeySequenceFromHandle(hwnd);
 
     bool shouldRestartSequence = true;
     while (shouldRestartSequence) {
@@ -823,8 +850,18 @@ void focusAndSendSequence(HWND hwnd) { // find this
         bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice
         //std::cout << cooldown << std::endl;
         if (cooldown) {
-            customSleep(max(10, min(100, macroDelayAfterFocus)));
-            continue;
+            if (keySeq != nullptr) {
+                customSleep(keySeq->getCheckEveryOnWait());
+            }
+            else {
+                customSleep(max(10, min(100, macroDelayAfterFocus)));
+            }
+
+            // behaviour for staying at that single window till it's out of cooldown
+            //continue;
+            
+            // original intended behaviour
+            return;
         }
         if (stopMacroInput.load()) return;
         waitIfInterrupted();
@@ -1550,7 +1587,7 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
     }
 
     macroDelayInitial = getConfigInt(config, "settings/macro/general/initialDelayBeforeFirstIteration", 100);
-    macroDelayBeforeSwitching = getConfigInt(config, "settings/macro/general/delayBeforeSwitchingWindow", 0);
+    macroDelayBeforeSwitching = getConfigInt(config, "settings/macro/general/delayBeforeSwitchingWindow", 25);
     macroDelayAfterFocus = getConfigInt(config, "settings/macro/general/delayAfterSwitchingWindow", 200);
     delayWhenDoneAllWindows = getConfigInt(config, "settings/macro/general/delayWhenDoneAllWindows", 100);
     macroDelayBetweenSwitchingAndFocus = getConfigInt(config, "settings/macro/general/settingsChangeOnlyWhenReallyNeeded/afterSettingForegroundButBeforeSettingFocus", 10);
@@ -1623,7 +1660,6 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
 
     usePrimitiveInterruptionAlgorythm = getConfigBool(config, "settings/macro/interruptions/advanced/primitiveInterruptionsAlgorythm/enabled", true);
     primitiveWaitInterval = getConfigInt(config, "settings/macro/interruptions/advanced/primitiveInterruptionsAlgorythm/checkEvery_milliseconds", 100);
-
 
     std::vector<std::string> localDefaultFastForegroundWindows;
     localDefaultFastForegroundWindows.push_back("Roblox");

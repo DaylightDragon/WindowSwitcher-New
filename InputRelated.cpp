@@ -34,6 +34,7 @@ class KeySequence {
     private:
         std::vector<Key> keys;
         long cooldownPerWindow = 1000 * 30; // 30 seconds
+        int checkEveryOnWait;
 
     public:
         KeySequence() {
@@ -64,7 +65,8 @@ class KeySequence {
                     }
                 }
             }
-            cooldownPerWindow = getConfigLong(node, "cooldownPerWindow_milliseconds", 1000 * 30);
+            cooldownPerWindow = getConfigLong(node, "cooldownPerWindow/cooldownDuration_milliseconds", 1000 * 30);
+            checkEveryOnWait = getConfigInt(node, "cooldownPerWindow/waitIfFoundActiveCooldown_beforeDelayBeforeSwitching_milliseconds", 100);
         }
 
         KeySequence(std::string singleKeySimple) {
@@ -86,6 +88,10 @@ class KeySequence {
 
         void setCooldownPerWindow(long cooldown) {
             this->cooldownPerWindow = cooldown;
+        }
+
+        int getCheckEveryOnWait() {
+            return checkEveryOnWait;
         }
 
         int countEnabledKeys() {
