@@ -1345,7 +1345,9 @@ void setGroupKey(HWND h) {
     }
 }
 
-YAML::Node getDefaultSequenceList() {
+YAML::Node getDefaultSequenceList(bool withExample) {
+    YAML::Node list = YAML::Node(YAML::NodeType::Sequence);
+
     YAML::Node firstKey = YAML::Node();
     setConfigValue(firstKey, "keyCode", defaultMacroKey);
     setConfigValue(firstKey, "enabled", true);
@@ -1353,14 +1355,16 @@ YAML::Node getDefaultSequenceList() {
     setConfigValue(firstKey, "holdFor", 2400);
     setConfigValue(firstKey, "afterKeyPress", 10);
 
-    //YAML::Node keyExample = YAML::Clone(firstKey); // cool thing
-    YAML::Node keyExample = YAML::Node();
-    setConfigValue(keyExample, "keyCode", "EXAMPLE");
-    setConfigValue(keyExample, "enabled", false);
-
-    YAML::Node list = YAML::Node(YAML::NodeType::Sequence);
     list.push_back(firstKey);
-    list.push_back(keyExample);
+
+    if (withExample) {
+        //YAML::Node keyExample = YAML::Clone(firstKey); // cool thing
+        YAML::Node keyExample = YAML::Node();
+        setConfigValue(keyExample, "keyCode", "EXAMPLE");
+        setConfigValue(keyExample, "enabled", false);
+
+        list.push_back(keyExample);
+    }
 
     YAML::Node node = YAML::Node();
     node["instructions"] = list;
@@ -1377,6 +1381,25 @@ YAML::Node getDefaultExtraKeySequences() {
     return node;
 }
 
+void addNewKeysToSequence(YAML::Node& config, std::string key, YAML::Node extraKeys) {
+    YAML::Node resultInstructions = YAML::Node(YAML::NodeType::Sequence);
+    YAML::Node oldInstructions = getConfigValue(getConfigValue(config, key), "instructions");
+    YAML::Node newInstructions = getConfigValue(extraKeys, "instructions");
+    //std::cout << "Old instr " << oldInstructions << oldInstructions.IsDefined() << '\n';
+    //std::cout << "New instr " << newInstructions << '\n';
+    if (oldInstructions.IsSequence()) {
+        for (YAML::Node instr : oldInstructions) {
+            resultInstructions.push_back(instr);
+        }
+    }
+    if (newInstructions.IsSequence()) {
+        for (YAML::Node instr : newInstructions) {
+            resultInstructions.push_back(instr);
+        }
+    }
+    setConfigValue(config, key + "/instructions", resultInstructions);
+}
+
 void resetMainSequence(const YAML::Node &config) {
     if (mainSequence != nullptr) {
         delete mainSequence;
@@ -1391,7 +1414,7 @@ void readNewMainSequence(const YAML::Node& config) {
 
 void readDefaultMainSequence(const YAML::Node& config) {
     resetMainSequence(config);
-    mainSequence = new KeySequence(getDefaultSequenceList());
+    mainSequence = new KeySequence(getDefaultSequenceList(true));
 }
 
 void resetInterruptionManager(const YAML::Node& config) {
@@ -1488,7 +1511,7 @@ void updateConfig2_0_TO_2_1(YAML::Node &config, bool wrongConfig, bool firstUpda
     list.push_back(firstKey);
     list.push_back(keyExample);
 
-    setConfigValue(config, "settings/macro/mainKeySequence", getDefaultSequenceList());
+    setConfigValue(config, "settings/macro/mainKeySequence", getDefaultSequenceList(true));
     if(!checkExists(config, "settings/macro/extraKeySequences")) setConfigValue(config, "settings/macro/extraKeySequences", std::vector<YAML::Node>());
     removeConfigValue(config, "settings/macro/delaysInMilliseconds");
     removeConfigValue(config, "settings/macro/justHoldWhenSingleWindow");
@@ -1604,7 +1627,8 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         // if there is nothing
         if (mainSequence->countEnabledKeys() == 0) {
             // set default values
-            setConfigValue(config, "settings/macro/mainKeySequence", getDefaultSequenceList());
+            if(mainSequence->countKeysTotal() == 0) addNewKeysToSequence(config, "settings/macro/mainKeySequence", getDefaultSequenceList(true));
+            else addNewKeysToSequence(config, "settings/macro/mainKeySequence", getDefaultSequenceList(false));
             // reset the sequence and read the yaml object again
             readNewMainSequence(config);
         }

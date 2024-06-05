@@ -102,6 +102,10 @@ class KeySequence {
             //cout << c << endl;
             return c;
         }
+
+        int countKeysTotal() {
+            return keys.size();
+        }
 };
 
 enum InterruptionInputType {
