@@ -17,11 +17,11 @@
 #include <csignal>
 
 #include "InputRelated.cpp"
+#include "Data.cpp"
 
 #include "ConfigOperations.h"
 #include "GeneralUtils.h"
 #include "CustomHotkeys.h"
-#include "Data.h"
 
 std::string currentVersion = "2.3";
 
@@ -38,6 +38,7 @@ KeySequence* mainSequence;
 std::map<std::string, KeySequence*> knownOtherSequences = std::map<std::string, KeySequence*>();
 std::vector<std::string> failedHotkeys;
 std::atomic<InputsInterruptionManager*> interruptionManager;
+std::atomic<Settings*> settings;
 
 std::map<int, std::vector<HWND>> autoGroups;
 
@@ -64,6 +65,7 @@ int primitiveWaitInterval = 100;
 int sleepRandomnessPersent = 10;
 int sleepRandomnessMaxDiff = 40;
 
+// Cells
 int cellsDimensions = 2;
 
 // Runtime/status variables
@@ -89,6 +91,7 @@ std::thread* macroDelayWatcherThread;
 std::thread* keyboardHookThread;
 std::thread* mouseHookThread;
 
+// Advanced macro interruptions
 std::condition_variable macroWaitCv;
 std::mutex* macroWaitMutex = nullptr;
 std::unique_lock<std::mutex>* macroWaitLock = nullptr;
@@ -995,7 +998,29 @@ int GetMonitorNumber(HMONITOR hMonitor, const std::vector<MonitorData>& monitors
     return it != monitors.end() ? it->monitorNum : -1;
 }
 
-int GetWindowCell(HWND hwnd, int N) {
+POINT getMaxGridDimensionsForScreen(MonitorData& monitorData) {
+    RECT monitorRect = monitorData.rect;
+
+    POINT p;
+    p.x = (monitorRect.right - monitorRect.left) / settings.load()->minimalGameWindowSizeX;
+    p.y = (monitorRect.bottom - monitorRect.top) / settings.load()->minimalGameWindowSizeY;
+
+    //std::cout << "Unclamped x y: " << p.x << ' ' << p.y << '\n';
+    //std::cout << "Min max x: " << settings.load()->minCellsGridSizeX << ' ' << settings.load()->maxCellsGridSizeX << '\n';
+    //std::cout << "Min max y: " << settings.load()->minCellsGridSizeY << ' ' << settings.load()->maxCellsGridSizeY << '\n';
+
+    p.x = min(settings.load()->maxCellsGridSizeX, max(settings.load()->minCellsGridSizeX, p.x));
+    p.y = min(settings.load()->maxCellsGridSizeY, max(settings.load()->minCellsGridSizeY, p.y));
+    
+    //std::cout << "Clamped x y: " << p.x << ' ' << p.y << '\n';
+
+    //std::cout << "X: " << (monitorRect.right - monitorRect.left) << " / " << settings.load()->minimalGameWindowSizeX << " = " << p.x << '\n';
+    //std::cout << "Y: " << (monitorRect.bottom - monitorRect.top) << " / " << settings.load()->minimalGameWindowSizeY << " = " << p.y << '\n';
+    
+    return p;
+}
+
+int GetWindowCell(HWND hwnd) {
     RECT windowRect;
     GetWindowRect(hwnd, &windowRect);
 
@@ -1004,15 +1029,23 @@ int GetWindowCell(HWND hwnd, int N) {
     EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, reinterpret_cast<LPARAM>(&monitors));
 
     int cell = 0;
+    int i = -1;
+
+    //std::cout << monitors[1].rect.left << " " << monitors[1].rect.right << '\n' << monitors[1].rect.top << " " << monitors[1].rect.bottom << '\n';
+    //monitors[1].rect.right = 1920 + 2560;
+    //monitors[1].rect.bottom = 1440;
+
     //std::cout << monitors.size() << " monitors" << std::endl;
-    for (int monitorIndex = 0; monitorIndex < monitors.size(); ++monitorIndex) {
-        const MonitorData& monitorData = monitors[monitorIndex];
+    for (MonitorData& monitorData : monitors) {
+        i++;
+
+        POINT gridDimensions = getMaxGridDimensionsForScreen(monitorData);
+        //std::cout << "Grid: " << gridDimensions.x << " " << gridDimensions.y << std::endl;
+
         RECT monitorRect = monitorData.rect;
 
-        int totalCells = N * N;
-
-        int cellWidth = (monitorRect.right - monitorRect.left) / N;
-        int cellHeight = (monitorRect.bottom - monitorRect.top) / N;
+        int cellWidth = (monitorRect.right - monitorRect.left) / gridDimensions.x;
+        int cellHeight = (monitorRect.bottom - monitorRect.top) / gridDimensions.y;
 
         POINT windowCenter;
         windowCenter.x = (windowRect.left + windowRect.right) / 2; //  - monitorRect.left
@@ -1023,30 +1056,53 @@ int GetWindowCell(HWND hwnd, int N) {
 
         bool windowInThisMonitor = PtInRect(&monitorRect, windowCenter);
         //bool windowInThisMonitor = monitorRect.
-        bool checkingLastMonitor = monitorIndex + 1 >= monitors.size();
+        bool checkingLastMonitor = i + 1 >= monitors.size();
 
         if (windowInThisMonitor || checkingLastMonitor) {
             if (!windowInThisMonitor && checkingLastMonitor) {
                 // fully to the right, weird case, can also not do the thing below
-                cell -= 1;
+                cell += 200;
             }
             int cellRow = (windowCenter.y - monitorRect.top) / cellHeight;
             int cellCol = (windowCenter.x - monitorRect.left) / cellWidth;
             //std::cout << "Extra: " << -monitorRect.left << " " << -monitorRect.left << std::endl;
             //std::cout << "Row: " << windowCenter.y << " / " << cellHeight << " = " << (windowCenter.y) / cellHeight << std::endl;
             //std::cout << "Col: " << windowCenter.x << " / " << cellWidth << " = " << (windowCenter.x) / cellWidth << std::endl;
-            int monitorOffset = monitorIndex * totalCells;
-            cell += monitorOffset + cellRow * N + cellCol;
+            cell += cellRow * gridDimensions.x + cellCol;
             //std::cout << "Row Col " << cellRow << " " << cellCol << std::endl;
             break;
+        }
+        else {
+            cell += gridDimensions.x * gridDimensions.y;
         }
     }
 
     return cell;
 }
 
+// false in two cases of three!
+bool windowIsLinkedManually(HWND hwnd) {
+    return handleToGroup.count(hwnd) > 0;
+}
+
+// false in two cases of three!
+bool windowIsLinkedAutomatically(HWND hwnd) {
+    // handleToGroup contains hwnd only if the window is linked and linked manually
+    for (auto& autoGroup : autoGroups) {
+        for (HWND& autoWindow : autoGroup.second) {
+            // ignoring manually linked window
+            if (autoWindow == hwnd) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void distributeRxHwndsToGroups(HWND hwnd) {
     if (checkHungWindow(hwnd)) return;
+    if (settings.load()->ignoreManuallyLinkedWindows && windowIsLinkedManually(hwnd)) return;
+
     RECT r = { NULL };
     bool openCmdLater = false;
     if (IsIconic(hwnd)) {
@@ -1072,11 +1128,11 @@ void distributeRxHwndsToGroups(HWND hwnd) {
     //if (r.left == -7 && r.top == 0 && r.right == 967 && r.bottom == 527) autoGroup1.push_back(hwnd); // Explorer window
     //std::cout << r.right - r.left << "   " << r.bottom - r.top << endl;
     
-    std::cout << "Getting cell...\n";
-    int cell = GetWindowCell(hwnd, cellsDimensions);
-    std::cout << cell << '\n';
+    //std::cout << "Getting cell...\n";
+    int cell = GetWindowCell(hwnd);
+    //std::cout << cell << '\n';
     autoGroups[cell].push_back(hwnd);
-    std::cout << "Added\n";
+    //std::cout << "Added\n";
 
     //if (r.right - r.left == desktopX / 2 && (r.bottom - r.top == 638 || r.bottom - r.top == 631)) { // 631 is considered as height when at the top, check on different Windows versions and
     //    if (r.left == 0 && r.top == 0) autoGroup1.push_back(hwnd); // actual sizes         // find out which one doesn't work and change to + or - border size //TODO
@@ -1426,6 +1482,18 @@ void resetInterruptionManager(const YAML::Node& config) {
     //std::cout << "resetInterruptionManager\n";
 }
 
+void resetSettings(const YAML::Node& config) {
+    if (settings != nullptr) {
+        delete settings;
+        settings = nullptr;
+    }
+}
+
+void readNewSettings(const YAML::Node& config) {
+    resetSettings(config);
+    settings = new Settings(config);
+}
+
 void rememberInitialPermanentSettings() {
     oldConfigValue_startAnything = interruptionManager.load()->getShouldStartAnything().load();
     oldConfigValue_startKeyboardHook = interruptionManager.load()->getShouldStartKeyboardHook().load();
@@ -1607,7 +1675,12 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
             firstUpdate = false;
             oldConfigVersion = "2.3";
         }
+        //if (oldConfigVersion != getCurrentVersion) {
+        //}
+
     }
+
+    readNewSettings(config);
 
     macroDelayInitial = getConfigInt(config, "settings/macro/general/initialDelayBeforeFirstIteration", 100);
     macroDelayBeforeSwitching = getConfigInt(config, "settings/macro/general/delayBeforeSwitchingWindow", 25);
@@ -1671,7 +1744,6 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
             defaultList = interruptionManager.load()->getDefaultInterruptionConfigsList(ANY_INPUT);
             if (nothingMouse) setConfigValue(config, "settings/macro/interruptions/anyInput/manyInputsCases", *defaultList);
             delete defaultList;
-
 
             // reset the manager and read the yaml object again
             readNewInterruptionManager(config);
@@ -1958,11 +2030,15 @@ void macroDelayModificationLoop() {
 }
 
 void testHotkey() {
-    HWND hwnd = GetForegroundWindow();
+    /*HWND hwnd = GetForegroundWindow();
+
+    RECT windowSize = { NULL };
+    DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &windowSize, sizeof(RECT));
+    std::cout << windowSize.right - windowSize.left << " " << windowSize.bottom - windowSize.top << std::endl;*/
 
     // The number of cells in each row/column of the grid
-    int N = 3;
-    int cell = GetWindowCell(hwnd, N);
+    HWND hwnd = GetForegroundWindow();
+    int cell = GetWindowCell(hwnd);
 
     std::cout << cell << std::endl;
     return;
