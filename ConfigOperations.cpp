@@ -50,6 +50,26 @@ bool createDirectories(const std::string& path) {
     return false;
 }
 
+#include <codecvt>
+
+namespace YAML {
+    template <>
+    struct convert<std::wstring> {
+        static Node encode(const std::wstring& rhs) {
+            return Node(convert<std::string>::encode(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(rhs)));
+        }
+
+        static bool decode(const Node& node, std::wstring& rhs) {
+            if (!node.IsScalar()) {
+                return false;
+            }
+            std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+            rhs = converter.from_bytes(node.Scalar());
+            return true;
+        }
+    };
+}
+
 void addConfigLoadingMessage(std::string message) {
     if (!configLoadingMessages.empty()) configLoadingMessages += "\n";
     configLoadingMessages += message;
@@ -418,6 +438,26 @@ void setConfigValue(const YAML::Node &config, std::string path, std::vector<std:
     (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
 }
 
+void setConfigValue(const YAML::Node& config, std::string path, std::vector<std::wstring> value) {
+    std::vector<std::string> splittedStrings;
+
+    std::stringstream ss(path);
+    std::string token;
+
+    while (std::getline(ss, token, '/')) {
+        splittedStrings.push_back(token);
+    }
+
+    YAML::Node* node = new YAML::Node();
+    *node = config;
+
+    for (int i = 0; i < splittedStrings.size() - 1; i++) {
+        node = &(*node)[splittedStrings[i]];
+    }
+
+    (*node)[splittedStrings[splittedStrings.size() - 1]] = value;
+}
+
 void setConfigValue(const YAML::Node &config, std::string path, std::vector<int> value) {
     std::vector<std::string> splittedStrings;
 
@@ -675,6 +715,38 @@ std::vector<std::string> getConfigVectorString(const YAML::Node &config, std::st
 
 std::vector<std::string> getConfigVectorString(const YAML::Node& config, std::string key, std::vector<std::string> defaultValue) {
     return getConfigVectorString(config, key, defaultValue, false);
+}
+
+std::vector<std::wstring> getConfigVectorWstring(const YAML::Node& config, std::string key, std::vector<std::wstring> defaultValue, bool leaveIfNone) {
+    YAML::Node data;
+    try {
+        data = getConfigValue(config, key);
+    }
+    catch (const YAML::Exception& e) {
+        addConfigLoadingMessage("WARNING | Unable to read config value \"" + key + "\", using default value instead.");
+        return defaultValue;
+    }
+    if (!data.IsDefined()) {
+        if (!leaveIfNone) setConfigValue(config, key, defaultValue);
+        return defaultValue;
+    }
+    if (data.Type() != YAML::NodeType::Sequence) {
+        addConfigLoadingMessage("WARNING | Detected non-sequence value at SEQUENCE type key \"" + key + "\"! Replacing it with the default value.");
+        setConfigValue(config, key, defaultValue);
+        return defaultValue;
+    }
+
+    std::vector<std::wstring> v;
+
+    for (YAML::const_iterator it = data.begin(); it != data.end(); ++it) {
+        std::wstring value = it->as<std::wstring>();
+        v.push_back(value);
+    }
+    return v;
+}
+
+std::vector<std::wstring> getConfigVectorWstring(const YAML::Node& config, std::string key, std::vector<std::wstring> defaultValue) {
+    return getConfigVectorWstring(config, key, defaultValue, false);
 }
 
 std::string getConfigString(const YAML::Node &config, std::string key, std::string defaultValue, bool leaveIfNone) {

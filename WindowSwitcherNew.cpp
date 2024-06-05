@@ -39,6 +39,7 @@ std::map<std::string, KeySequence*> knownOtherSequences = std::map<std::string, 
 std::vector<std::string> failedHotkeys;
 std::atomic<InputsInterruptionManager*> interruptionManager;
 std::atomic<Settings*> settings;
+RuntimeData runtimeData;
 
 std::map<int, std::vector<HWND>> autoGroups;
 
@@ -57,16 +58,13 @@ int macroDelayAfterKeyPress;
 int macroDelayAfterKeyRelease;
 bool specialSingleWindowModeEnabled;
 std::string specialSingleWindowModeKeyCode;
-std::vector<std::string> defaultFastForegroundWindows;
+std::vector<std::wstring> defaultFastForegroundWindows;
 bool usePrimitiveInterruptionAlgorythm = false;
 int primitiveWaitInterval = 100;
 
 // Input randomness
 int sleepRandomnessPersent = 10;
 int sleepRandomnessMaxDiff = 40;
-
-// Cells
-int cellsDimensions = 2;
 
 // Runtime/status variables
 std::atomic<bool> stopMacroInput = true;
@@ -96,7 +94,11 @@ std::condition_variable macroWaitCv;
 std::mutex* macroWaitMutex = nullptr;
 std::unique_lock<std::mutex>* macroWaitLock = nullptr;
 
+// Debug related
 bool debugMode = IsDebuggerPresent();;
+bool registerKeyboardHookInDebug = false;
+bool registerKeyboardMouseInDebug = true;
+
 //std::string mainConfigName = "WsSettings/settings.yml";
 
 bool getDebugMode() {
@@ -429,6 +431,25 @@ void customSleep(int duration) {
     Sleep(randomizeValue(duration, sleepRandomnessPersent, sleepRandomnessMaxDiff));
 }
 
+// false in two cases of three!
+bool windowIsLinkedManually(HWND hwnd) {
+    return handleToGroup.count(hwnd) > 0;
+}
+
+// false in two cases of three!
+bool windowIsLinkedAutomatically(HWND hwnd) {
+    // handleToGroup contains hwnd only if the window is linked and linked manually
+    for (auto& autoGroup : autoGroups) {
+        for (HWND& autoWindow : autoGroup.second) {
+            // ignoring manually linked window
+            if (autoWindow == hwnd) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 WindowGroup* getGroup(HWND hwnd) {
     if (handleToGroup.count(hwnd)) {
         std::map<HWND, WindowGroup*>::iterator it = handleToGroup.find(hwnd);
@@ -618,8 +639,8 @@ static BOOL CALLBACK enumWindowCallback(HWND hwnd, LPARAM lparam) {
     //GetWindowTextW(hwnd, buffer, length + 1);
     //std::wstring ws(buffer);
 
-    std::wstring ws = getWindowName(hwnd);
-    std::string str(ws.begin(), ws.end());
+    std::wstring windowName = getWindowName(hwnd);
+    //std::wstring str(ws.begin(), ws.end()); // wstring to string
 
     // List visible windows with a non-empty title
     //if (IsWindowVisible(hwnd) && length != 0) {
@@ -630,12 +651,23 @@ static BOOL CALLBACK enumWindowCallback(HWND hwnd, LPARAM lparam) {
     //    if (!checkHungWindow(hwnd)) ShowWindow(hwnd, SW_SHOW);
     //}
     //else {
-        for (auto& it : defaultFastForegroundWindows) {
-            if (str.find(it) != std::wstring::npos) {
-                if (!checkHungWindow(hwnd)) ShowWindow(hwnd, SW_SHOW); //std::cout << GetLastError() << endl;
-                //std::cout << "RBX HERE " << str << endl;
+    bool allow = false;
+    for (auto& specified : defaultFastForegroundWindows) {
+        if (specified.front() == '*' && specified.back() == '*') {
+            std::wstring mainPart = specified.substr(1, specified.length() - 2);
+
+            if (specified == windowName || (windowName.find(mainPart) != std::wstring::npos)) {
+                allow = true;
+                break;
             }
         }
+        else if (windowName.find(specified) != std::wstring::npos) {
+            allow = true;
+            //std::cout << "RBX HERE " << str << endl;
+        }
+    }
+
+    if (allow && !checkHungWindow(hwnd)) ShowWindow(hwnd, SW_SHOW); //std::cout << GetLastError() << endl;
     //}
 
     //EnumChildWindows(hwnd, enumWindowCallback, NULL); //TODO ?
@@ -701,6 +733,8 @@ bool waitIfInterrupted() {
                 Sleep(primitiveWaitInterval);
             }
         }
+
+        //runtimeData.saveCurrentForgroundWindow(); // ?
 
         //interruptionManager.load()->getConditionVariable().wait(interruptionManager.load()->getLock(), [] { return (interruptionManager.load()->getUntilNextMacroRetryAtomic().load() <= 0); });
         //std::cout << "Done waiting\n";
@@ -850,7 +884,7 @@ void focusAndSendSequence(HWND hwnd) { // find this
         if (stopMacroInput.load()) return;
         waitIfInterrupted();
         if (stopMacroInput.load()) return;
-        bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice
+        bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice, and not two separate funcs to not look for objects again
         //std::cout << cooldown << std::endl;
         if (cooldown) {
             if (keySeq != nullptr) {
@@ -863,13 +897,21 @@ void focusAndSendSequence(HWND hwnd) { // find this
             // behaviour for staying at that single window till it's out of cooldown
             //continue;
             
+            if(!runtimeData.hadCooldownOnPrevWindow.load()) runtimeData.activatePrevActiveWindow();
+            else runtimeData.hadCooldownOnPrevWindow.store(cooldown);
             // original intended behaviour
             return;
         }
+        runtimeData.hadCooldownOnPrevWindow.store(cooldown);
+
         if (stopMacroInput.load()) return;
         waitIfInterrupted();
         if (stopMacroInput.load()) return;
 
+        HWND curForegr = GetForegroundWindow();
+        if (!windowIsLinkedManually(curForegr) && !windowIsLinkedAutomatically(curForegr)) {
+            runtimeData.saveCurrentForgroundWindow();
+        }
         SetForegroundWindow(hwnd);
         customSleep(macroDelayBetweenSwitchingAndFocus);
         SetFocus(hwnd);
@@ -1078,25 +1120,6 @@ int GetWindowCell(HWND hwnd) {
     }
 
     return cell;
-}
-
-// false in two cases of three!
-bool windowIsLinkedManually(HWND hwnd) {
-    return handleToGroup.count(hwnd) > 0;
-}
-
-// false in two cases of three!
-bool windowIsLinkedAutomatically(HWND hwnd) {
-    // handleToGroup contains hwnd only if the window is linked and linked manually
-    for (auto& autoGroup : autoGroups) {
-        for (HWND& autoWindow : autoGroup.second) {
-            // ignoring manually linked window
-            if (autoWindow == hwnd) {
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 void distributeRxHwndsToGroups(HWND hwnd) {
@@ -1311,7 +1334,39 @@ void hideForgr() {
     //std::cout << (h == FindWindow(L"SysTabControl32", NULL)) << endl;
     //std::wcout << getWindowName(GetParent(h)) << endl;
     //std::cout << (curHwnd == GetDesktopWindow());
-    if (h != FindWindow("Shell_TrayWnd", NULL) && !checkHungWindow(h)) ShowWindow(h, SW_HIDE); // taskbar, other desktop components get back on their own
+
+    // taskbar, other desktop components get back on their own
+    if (h != FindWindow("Shell_TrayWnd", NULL) && !checkHungWindow(h)) {
+        bool allow = false;
+        if (settings.load()->allowAnyToBackgroundWindows) {
+            allow = true;
+        }
+        else {
+            std::wstring ws = getWindowName(h);
+
+            for (const std::wstring& specified : settings.load()->allowToBackgroundWindows) {
+                if (specified.front() == '*' && specified.back() == '*') {
+                    std::wstring mainPart = specified.substr(1, specified.length() - 2);
+
+                    //std::wcout << ws << " and " << mainPart << "\n";
+                    if (specified == ws || (ws.find(mainPart) != std::wstring::npos)) {
+                        allow = true;
+                        break;
+                    }
+                }
+                else {
+                    for (const std::wstring& specified : settings.load()->allowToBackgroundWindows) {
+                        if (specified == ws) {
+                            allow = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (allow) ShowWindow(h, SW_HIDE); 
+    }
     //get back from std::vector somehow, maybe input
 }
 
@@ -1505,7 +1560,7 @@ void readSimpleInteruptionManagerSettings(const YAML::Node& config) {
     interruptionManager.load()->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startWithDelay_seconds", 3));
     interruptionManager.load()->setInputsListCapacity(getConfigInt(config, "settings/macro/interruptions/rememberMaximumInputsEach", 40));
     interruptionManager.load()->setInputSeparationWaitingTimeout(getConfigInt(config, "settings/macro/interruptions/macroInputArrivalTimeoutToSeparateFromUserInputs", 1000));
-    interruptionManager.load()->setInformOnEvents(getConfigBool(config, "settings/macro/interruptions/informOnChangingDelay", false));
+    interruptionManager.load()->setInformOnEvents(getConfigBool(config, "settings/macro/interruptions/informOnChangingDelay", true));
     interruptionManager.load()->setModeEnabled(getConfigBool(config, "settings/macro/interruptions/interruptionsWorkingRightNow", false));
     
     // hooks
@@ -1629,6 +1684,9 @@ void updateConfig2_2_TO_2_3(YAML::Node& config, bool wrongConfig, bool firstUpda
             //std::cout << "SetNewExtraValues\n";
         }
     }
+
+    setConfigValue(config, "settings/windowOperations/windowVisualState/showingBackFromBackground/alwaysShowSpecificWindows", getConfigVectorWstring(config, "settings/fastReturnToForegroundWindows", getDefaultShowBackFromBackgroundList()));
+    removeConfigValue(config, "settings/fastReturnToForegroundWindows");
 }
 
 enum ConfigType {
@@ -1679,8 +1737,6 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
         //}
 
     }
-
-    readNewSettings(config);
 
     macroDelayInitial = getConfigInt(config, "settings/macro/general/initialDelayBeforeFirstIteration", 100);
     macroDelayBeforeSwitching = getConfigInt(config, "settings/macro/general/delayBeforeSwitchingWindow", 25);
@@ -1757,10 +1813,7 @@ YAML::Node& loadSettingsConfig(YAML::Node& config, bool wasEmpty, bool wrongConf
     usePrimitiveInterruptionAlgorythm = getConfigBool(config, "settings/macro/interruptions/advanced/primitiveInterruptionsAlgorythm/enabled", true);
     primitiveWaitInterval = getConfigInt(config, "settings/macro/interruptions/advanced/primitiveInterruptionsAlgorythm/checkEvery_milliseconds", 100);
 
-    std::vector<std::string> localDefaultFastForegroundWindows;
-    localDefaultFastForegroundWindows.push_back("Roblox");
-    localDefaultFastForegroundWindows.push_back("VMware Workstation");
-    defaultFastForegroundWindows = getConfigVectorString(config, "settings/fastReturnToForegroundWindows", localDefaultFastForegroundWindows);
+    readNewSettings(config);
 
     // saving
     setConfigValue(config, "internal/configVersion", currentVersion);
@@ -1950,9 +2003,6 @@ LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
-
-bool registerKeyboardHookInDebug = false;
-bool registerKeyboardMouseInDebug = true;
 
 void keyboardHookFunc() {
     if (registerKeyboardHookInDebug || !debugMode) {
@@ -2229,6 +2279,7 @@ int actualMain(int argc, char* argv[]) {
             }
             else if (msg.wParam == 31) {
                 reloadConfigs();
+                std::cout << "\nHave reloaded all configs" << std::endl;
                 printConfigLoadingMessages();
             }
             // EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE

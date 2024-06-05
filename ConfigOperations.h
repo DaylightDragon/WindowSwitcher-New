@@ -14,6 +14,7 @@ void setConfigValue(const YAML::Node &config, std::string path, long value);
 void setConfigValue(const YAML::Node &config, std::string path, float value);
 void setConfigValue(const YAML::Node &config, std::string path, bool value);
 void setConfigValue(const YAML::Node &config, std::string path, std::vector<std::string> value);
+void setConfigValue(const YAML::Node& config, std::string path, std::vector<std::wstring> value);
 void setConfigValue(const YAML::Node &config, std::string path, std::vector<int> value);
 void setConfigValue(const YAML::Node &config, std::string path, std::vector<long> value);
 void setConfigValue(const YAML::Node &config, std::string path, std::vector<float> value);
@@ -31,6 +32,8 @@ bool getConfigBool(const YAML::Node &config, std::string key, bool defaultValue,
 bool getConfigBool(const YAML::Node& config, std::string key, bool defaultValue);
 std::vector<std::string> getConfigVectorString(const YAML::Node &config, std::string key, std::vector<std::string> defaultValue, bool leaveIfNone);
 std::vector<std::string> getConfigVectorString(const YAML::Node& config, std::string key, std::vector<std::string> defaultValue);
+std::vector<std::wstring> getConfigVectorWstring(const YAML::Node& config, std::string key, std::vector<std::wstring> defaultValue, bool leaveIfNone);
+std::vector<std::wstring> getConfigVectorWstring(const YAML::Node& config, std::string key, std::vector<std::wstring> defaultValue);
 std::string getConfigString(const YAML::Node &config, std::string key, std::string defaultValue);
 std::string getConfigString(const YAML::Node& config, std::string key, std::string defaultValue, bool leaveIfNone);
 void removeConfigValue(YAML::Node &config, std::string path, bool throwException);

@@ -66,7 +66,7 @@ class KeySequence {
                 }
             }
             cooldownPerWindow = getConfigLong(node, "cooldownPerWindow/cooldownDuration_milliseconds", 1000 * 30);
-            checkEveryOnWait = getConfigInt(node, "cooldownPerWindow/waitIfFoundActiveCooldown_beforeDelayBeforeSwitching_milliseconds", 100);
+            checkEveryOnWait = getConfigInt(node, "cooldownPerWindow/delayBetweenCheckingTwoWindowsOnCooldown_milliseconds", 100);
         }
 
         KeySequence(std::string singleKeySimple) {
@@ -219,7 +219,7 @@ class InputsInterruptionManager {
         std::mutex threadSafetyMutex;
 
         std::atomic<bool> modeEnabled = false;
-        std::atomic<bool> informOnEvents = false;
+        std::atomic<bool> informOnEvents = true;
 
         // requires restarting the app
         std::atomic<bool> shouldStartAnything = false;
