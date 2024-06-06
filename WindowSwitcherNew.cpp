@@ -58,7 +58,6 @@ int macroDelayAfterKeyPress;
 int macroDelayAfterKeyRelease;
 bool specialSingleWindowModeEnabled;
 std::string specialSingleWindowModeKeyCode;
-std::vector<std::wstring> defaultFastForegroundWindows;
 bool usePrimitiveInterruptionAlgorythm = false;
 int primitiveWaitInterval = 100;
 
@@ -652,7 +651,7 @@ static BOOL CALLBACK enumWindowCallback(HWND hwnd, LPARAM lparam) {
     //}
     //else {
     bool allow = false;
-    for (auto& specified : defaultFastForegroundWindows) {
+    for (auto& specified : settings.load()->showingBackFromBackgroundWindows) {
         if (specified.front() == '*' && specified.back() == '*') {
             std::wstring mainPart = specified.substr(1, specified.length() - 2);
 
@@ -897,8 +896,9 @@ void focusAndSendSequence(HWND hwnd) { // find this
             // behaviour for staying at that single window till it's out of cooldown
             //continue;
             
+            std::cout << "hadCooldownOnPrevWindow: " << runtimeData.hadCooldownOnPrevWindow.load() << '\n';
             if(!runtimeData.hadCooldownOnPrevWindow.load()) runtimeData.activatePrevActiveWindow();
-            else runtimeData.hadCooldownOnPrevWindow.store(cooldown);
+            runtimeData.hadCooldownOnPrevWindow.store(cooldown);
             // original intended behaviour
             return;
         }

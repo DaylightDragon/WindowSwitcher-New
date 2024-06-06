@@ -27,7 +27,7 @@ private:
 public:
 	bool allowAnyToBackgroundWindows = false;
 	std::vector<std::wstring> allowToBackgroundWindows = getDefaultAllowedTobackgroundWindows();
-	std::vector<std::wstring> defaultFastForegroundWindows = getDefaultShowBackFromBackgroundList();
+	std::vector<std::wstring> showingBackFromBackgroundWindows = getDefaultShowBackFromBackgroundList();
 	int minCellsGridSizeX = 2;
 	int minCellsGridSizeY = 2;
 	int maxCellsGridSizeX = 2;
@@ -50,7 +50,7 @@ public:
 		allowAnyToBackgroundWindows = getConfigBool(config, "settings/windowOperations/windowVisualState/hidingToBackground/allowHidingAnyWindowToBackground", allowAnyToBackgroundWindows);
 		allowToBackgroundWindows = getConfigVectorWstring(config, "settings/windowOperations/windowVisualState/hidingToBackground/allowSpecificWindows", allowToBackgroundWindows);
 
-		defaultFastForegroundWindows = getConfigVectorWstring(config, "settings/windowOperations/windowVisualState/showingBackFromBackground/alwaysShowSpecificWindows", defaultFastForegroundWindows);
+		showingBackFromBackgroundWindows = getConfigVectorWstring(config, "settings/windowOperations/windowVisualState/showingBackFromBackground/alwaysShowSpecificWindows", showingBackFromBackgroundWindows);
 	}
 };
 
