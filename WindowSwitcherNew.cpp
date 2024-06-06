@@ -849,6 +849,21 @@ KeySequence* getKeySequenceFromHandle(HWND hwnd) {
     return keySeq;
 }
 
+bool checkCooldownActive(HWND hwnd) {
+    WindowInfo* wi = getWindowInfoFromHandle(hwnd);
+    if (wi == nullptr) return false;
+    KeySequence* keySeq = getKeySequenceFromHandle(hwnd);
+    if (keySeq == nullptr) return false;
+
+    auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count();
+    bool cooldown = timePassedSince < keySeq->getCooldownPerWindow();
+    //std::cout << timePassedSince << " " << keySeq->getCooldownPerWindow() << std::endl;
+
+    //std::cout << hwnd << '\n';
+    //if(cooldown) std::cout << timePassedSince << '\n';
+    return cooldown;
+}
+
 bool checkCooldownActiveAndRefresh(HWND hwnd) {
     WindowInfo* wi = getWindowInfoFromHandle(hwnd);
     if (wi == nullptr) return false;
@@ -865,7 +880,7 @@ bool checkCooldownActiveAndRefresh(HWND hwnd) {
     return cooldown;
 }
 
-void focusAndSendSequence(HWND hwnd) { // find this
+bool focusAndSendSequence(HWND hwnd) { // find this
     //std::cout << "Swapped to " << hwnd << std::endl;
 
     /*int key = mapOfKeys[defaultMacroKey]; // 0x12
@@ -876,13 +891,14 @@ void focusAndSendSequence(HWND hwnd) { // find this
     //std::cout << "test\n";
     //std::cout << "key: " << key << endl;
 
+    bool anySequenceInputHappened = false;
     KeySequence* keySeq = getKeySequenceFromHandle(hwnd);
 
     bool shouldRestartSequence = true;
     while (shouldRestartSequence) {
-        if (stopMacroInput.load()) return;
+        if (stopMacroInput.load()) return anySequenceInputHappened;
         waitIfInterrupted();
-        if (stopMacroInput.load()) return;
+        if (stopMacroInput.load()) return anySequenceInputHappened;
         bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice, and not two separate funcs to not look for objects again
         //std::cout << cooldown << std::endl;
         if (cooldown) {
@@ -896,22 +912,21 @@ void focusAndSendSequence(HWND hwnd) { // find this
             // behaviour for staying at that single window till it's out of cooldown
             //continue;
             
-            std::cout << "hadCooldownOnPrevWindow: " << runtimeData.hadCooldownOnPrevWindow.load() << '\n';
-            if(!runtimeData.hadCooldownOnPrevWindow.load()) runtimeData.activatePrevActiveWindow();
+            //std::cout << "hadCooldownOnPrevWindow: " << runtimeData.hadCooldownOnPrevWindow.load() << '\n';
+            if (!runtimeData.hadCooldownOnPrevWindow.load()) {
+                //runtimeData.activatePrevActiveWindow();
+            }
             runtimeData.hadCooldownOnPrevWindow.store(cooldown);
             // original intended behaviour
-            return;
+            return anySequenceInputHappened;
         }
         runtimeData.hadCooldownOnPrevWindow.store(cooldown);
 
-        if (stopMacroInput.load()) return;
+        if (stopMacroInput.load()) return anySequenceInputHappened;
         waitIfInterrupted();
-        if (stopMacroInput.load()) return;
+        if (stopMacroInput.load()) return anySequenceInputHappened;
 
-        HWND curForegr = GetForegroundWindow();
-        if (!windowIsLinkedManually(curForegr) && !windowIsLinkedAutomatically(curForegr)) {
-            runtimeData.saveCurrentForgroundWindow();
-        }
+        runtimeData.saveCurrentNonLinkedForgroundWindow();
         SetForegroundWindow(hwnd);
         customSleep(macroDelayBetweenSwitchingAndFocus);
         SetFocus(hwnd);
@@ -919,18 +934,25 @@ void focusAndSendSequence(HWND hwnd) { // find this
         customSleep(macroDelayAfterFocus);
 
         shouldRestartSequence = performASequence(hwnd);
+        anySequenceInputHappened = true;
     }
+
+    return anySequenceInputHappened;
 }
 
-void performInputsEverywhere() {
+bool performInputsEverywhere() {
+    bool anySequenceInputHappened = false;
     for (auto& it : handleToGroup) {
-        if (stopMacroInput.load()) return;
-        focusAndSendSequence(it.first);
+        if (stopMacroInput.load()) return true;
+        if (focusAndSendSequence(it.first)) anySequenceInputHappened = true;
         customSleep(macroDelayBeforeSwitching);
     }
+    return anySequenceInputHappened;
 }
 
 void startUsualMacroLoop() {
+    bool prev = false;
+
     customSleep(macroDelayInitial);
     while (!stopMacroInput.load()) {
         //for (int i = 0x5; i <= 0x30; i++) { // 5A
@@ -938,7 +960,20 @@ void startUsualMacroLoop() {
             //std::cout << std::hex << key << endl;
             //std::cout << std::dec;
             //key = i;
-        performInputsEverywhere();
+        /*bool anyOnCooldown = false;
+        for (auto& it : handleToGroup) {
+            if (checkCooldownActive(it.first)) {
+                anyOnCooldown = true;
+            }
+        }*/
+        //if (!stopMacroInput.load()) return;
+        bool anySequenceInputHappened = performInputsEverywhere();
+        //std::cout << "old: " << prev << ", new: " << anySequenceInputHappened << '\n';
+        if (anySequenceInputHappened && !prev) {
+            runtimeData.activatePrevActiveWindow();
+            //std::cout << "Changed, activating\n";
+        }
+        prev = anySequenceInputHappened;
         customSleep(delayWhenDoneAllWindows);
         // 8000
         /*for (int i = 0; i < 100; i++) {
@@ -950,8 +985,15 @@ void startUsualMacroLoop() {
 }
 
 void startUsualSequnceMode() {
-    currentMacroLoopThread = new std::thread(startUsualMacroLoop);
     interruptionManager.load()->getUntilNextMacroRetryAtomic().store(0);
+    for (auto& pair : handleToGroup) {
+        WindowInfo* wi = getWindowInfoFromHandle(pair.first);
+        if(wi != nullptr) {
+            wi->lastSequenceInputTimestamp = std::chrono::steady_clock::time_point();
+        }
+    }
+
+    currentMacroLoopThread = new std::thread(startUsualMacroLoop);
 }
 
 void performSingleWindowedHold() {
@@ -983,7 +1025,7 @@ void releaseConfiguredKey() {
     keyReleaseString(key);
 }
 
-void toggleMacroState() {
+void toggleKeySequenceMacroState() {
     if (handleToGroup.size() == 0) {
         std::cout << "You haven't linked any windows yet!\n";
     }
@@ -1557,7 +1599,7 @@ void rememberInitialPermanentSettings() {
 
 void readSimpleInteruptionManagerSettings(const YAML::Node& config) {
     interruptionManager.load()->setMacroPauseAfterKeyboardInput(getConfigInt(config, "settings/macro/interruptions/keyboard/startWithDelay_seconds", 8));
-    interruptionManager.load()->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startWithDelay_seconds", 3));
+    interruptionManager.load()->setMacroPauseAfterMouseInput(getConfigInt(config, "settings/macro/interruptions/mouse/startWithDelay_seconds", 4));
     interruptionManager.load()->setInputsListCapacity(getConfigInt(config, "settings/macro/interruptions/rememberMaximumInputsEach", 40));
     interruptionManager.load()->setInputSeparationWaitingTimeout(getConfigInt(config, "settings/macro/interruptions/macroInputArrivalTimeoutToSeparateFromUserInputs", 1000));
     interruptionManager.load()->setInformOnEvents(getConfigBool(config, "settings/macro/interruptions/informOnChangingDelay", true));
@@ -2088,6 +2130,9 @@ void testHotkey() {
 
     // The number of cells in each row/column of the grid
     HWND hwnd = GetForegroundWindow();
+    std::cout << hwnd << std::endl;
+    return;
+
     int cell = GetWindowCell(hwnd);
 
     std::cout << cell << std::endl;
@@ -2187,7 +2232,6 @@ int actualMain(int argc, char* argv[]) {
     programPath = argv[0];
     initializeRandom();
     reloadConfigs();
-    std::cout << "Config Done" << std::endl;
     rememberInitialPermanentSettings();
     registerHotkeys();
     printConfigLoadingMessages();
@@ -2260,7 +2304,7 @@ int actualMain(int argc, char* argv[]) {
                 //windowPosTest(curHwnd, 1);
             }
             else if (msg.wParam == 17) {
-                toggleMacroState();
+                toggleKeySequenceMacroState();
             }
             else if (msg.wParam == 24) {
                 hideForgr();

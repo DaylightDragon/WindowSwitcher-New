@@ -4,6 +4,7 @@
 #include <Windows.h>
 #include <yaml-cpp/yaml.h>
 #include "ConfigOperations.h"
+#include "WindowSwitcherNew.h"
 
 // made this public because of 2.2 -> 2.3 config migration
 // can move such things to a separate file for initializations
@@ -58,15 +59,27 @@ struct RuntimeData {
 	std::atomic<HWND> previouslyActiveWindow;
 	std::atomic<bool> hadCooldownOnPrevWindow{ false };
 
-	void saveCurrentForgroundWindow() {
-		previouslyActiveWindow.store(GetForegroundWindow());
+	void saveCurrentNonLinkedForgroundWindow() {
+		HWND hwnd = GetForegroundWindow();
+
+		bool linkedManually = windowIsLinkedManually(hwnd);
+		bool linkedAutomatically = windowIsLinkedAutomatically(hwnd);
+		//std::cout << hwnd << ": " << linkedManually << ", " << linkedAutomatically << '\n';
+		if (!linkedManually && !linkedAutomatically) {
+			previouslyActiveWindow.store(hwnd);
+		}
 	}
 
 	void activatePrevActiveWindow() {
 		HWND hwnd = previouslyActiveWindow.load();
 		if (IsWindow(hwnd)) {
-			SetForegroundWindow(hwnd);
-			//SetFocus(hwnd);
+			bool linkedManually = windowIsLinkedManually(hwnd);
+			bool linkedAutomatically = windowIsLinkedAutomatically(hwnd);
+
+			if (!linkedManually && !linkedAutomatically) {
+				SetForegroundWindow(hwnd);
+				//SetFocus(hwnd);
+			}
 		}
 	}
 };
