@@ -7,23 +7,6 @@
 #include "WindowSwitcherNew.h"
 #include "Data.h"
 
-// made this public because of 2.2 -> 2.3 config migration
-// can move such things to a separate file for initializations
-inline std::vector<std::wstring> getDefaultShowBackFromBackgroundList() {
-	std::vector<std::wstring> list;
-	list.push_back(L"Roblox");
-	list.push_back(L"VMware Workstation");
-	list.push_back(L"*WindowSwitcherNew*");
-	return list;
-};
-
-std::vector<std::wstring> Settings::getDefaultAllowedTobackgroundWindows() {
-	std::vector<std::wstring> result;
-	result.push_back(L"Roblox");
-	result.push_back(L"*WindowSwitcherNew*");
-	return result;
-}
-
 Settings::Settings(const YAML::Node& config) {
 	minCellsGridSizeX = getConfigInt(config, "settings/windowOperations/windowLinking/cellGrid/minCells/x", minCellsGridSizeX);
 	minCellsGridSizeY = getConfigInt(config, "settings/windowOperations/windowLinking/cellGrid/minCells/y", minCellsGridSizeY);

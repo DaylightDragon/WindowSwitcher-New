@@ -4,13 +4,14 @@
 #include <map>
 #include <string>
 #include <Windows.h>
+#include <atomic>
 
 #include "WindowRelated.h"
 #include "Data.h"
 
 extern std::map<std::string, int> mapOfKeys;
 extern std::map<HWND, WindowGroup*> handleToGroup;
-extern std::atomic<Settings*> settings;;
+extern std::atomic<Settings*> settings;
 
 extern bool hideNotMainWindows;
 

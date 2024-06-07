@@ -1,6 +1,8 @@
+#include "InputRelated.h"
+
 #include "yaml-cpp/yaml.h"
 #include "ConfigOperations.h"
-#include "InputRelated.cpp"
+#include "DataStash.h"
 
 std::string defaultMacroKey = "e";
 
@@ -57,6 +59,48 @@ YAML::Node* getDefaultInterruptionConfigsList(InterruptionInputType type) {
         delete conf;
     }
     return list;
+}
+
+// made this public because of 2.2 -> 2.3 config migration
+// can move such things to a separate file for initializations
+std::vector<std::wstring> getDefaultShowBackFromBackgroundList() {
+    std::vector<std::wstring> list;
+    list.push_back(L"Roblox");
+    list.push_back(L"VMware Workstation");
+    list.push_back(L"*WindowSwitcherNew*");
+    return list;
+};
+
+std::vector<std::wstring> getDefaultAllowedTobackgroundWindows() {
+    std::vector<std::wstring> result;
+    result.push_back(L"Roblox");
+    result.push_back(L"*WindowSwitcherNew*");
+    return result;
+}
+
+std::string configTypeToString(ConfigType type) {
+    switch (type)
+    {
+    case MAIN_CONFIG:
+        return "Settings";
+    case KEYBINDS_CONFIG:
+        return "Keybindings";
+    default:
+        return "Unknown config type";
+    }
+}
+
+inline std::string inputTypeToString(InterruptionInputType type) {
+    switch (type) {
+    case KEYBOARD:
+        return "Keyboard";
+    case MOUSE:
+        return "Mouse";
+    case ANY_INPUT:
+        return "Any input";
+    default:
+        return "Unknown";
+    }
 }
 
 // Non-character ones will work only with interruptions disabled! (add to readme)

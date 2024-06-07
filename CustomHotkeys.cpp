@@ -5,47 +5,39 @@
 #include <algorithm>
 #include "WindowSwitcherNew.h"
 #include "ConfigOperations.h"
+#include "CustomHotkeys.h"
 
-struct KeybindInfo;
 std::atomic<std::vector<KeybindInfo>*> activeKeybinds = nullptr;
 
 std::vector<KeybindInfo>* getActiveKeybinds() {
     return activeKeybinds.load();
 }
 
-struct KeybindInfo {
-    int id;
-    std::string hotkey;
-    std::string internalName;
-    std::string description;
-    bool hidden = false;
+KeybindInfo::KeybindInfo(int id, std::string hotkey, std::string internalName, std::string description) {
+    this->id = id;
+    this->hotkey = hotkey;
+    this->internalName = internalName;
+    this->description = description;
+}
 
-    KeybindInfo(int id, std::string hotkey, std::string internalName, std::string description) {
-        this->id = id;
-        this->hotkey = hotkey;
-        this->internalName = internalName;
-        this->description = description;
-    }
+KeybindInfo& KeybindInfo::setHidden(bool hidden) {
+    this->hidden = hidden;
+    return *this;
+}
 
-    KeybindInfo& setHidden(bool hidden) {
-        this->hidden = hidden;
-        return *this;
-    }
+YAML::Node* KeybindInfo::toNode() {
+    YAML::Node* node = new YAML::Node();
+    //setConfigValue(*node, "internalName", this->internalName);
+    setConfigValue(*node, "description", this->description);
+    setConfigValue(*node, "hotkey", this->hotkey);
+    return node;
+}
 
-    YAML::Node* toNode() {
-        YAML::Node* node = new YAML::Node();
-        //setConfigValue(*node, "internalName", this->internalName);
-        setConfigValue(*node, "description", this->description);
-        setConfigValue(*node, "hotkey", this->hotkey);
-        return node;
-    }
-
-    std::string toString() {
-        std::stringstream ss;
-        ss << "{id=" << this->id << ", internalName=" << this->internalName << ", hotkey=" << hotkey << ", description=" << description << "}";
-        return ss.str();
-    }
-};
+std::string KeybindInfo::toString() {
+    std::stringstream ss;
+    ss << "{id=" << this->id << ", internalName=" << this->internalName << ", hotkey=" << hotkey << ", description=" << description << "}";
+    return ss.str();
+}
 
 std::map<std::string, int> keybindingTextToKey = {
     {"a", 65},

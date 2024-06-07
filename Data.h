@@ -3,16 +3,14 @@
 #include <atomic>
 #include <string>
 #include <vector>
+#include <atomic>
 #include <Windows.h>
 #include <yaml-cpp/yaml.h>
 #include "ConfigOperations.h"
 #include "WindowSwitcherNew.h"
-
-inline std::vector<std::wstring> getDefaultShowBackFromBackgroundList();
+#include "DataStash.h"
 
 struct Settings {
-private:
-	std::vector<std::wstring> getDefaultAllowedTobackgroundWindows();
 public:
 	bool allowAnyToBackgroundWindows = false;
 	std::vector<std::wstring> allowToBackgroundWindows = getDefaultAllowedTobackgroundWindows();
