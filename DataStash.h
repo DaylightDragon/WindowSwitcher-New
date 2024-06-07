@@ -1,8 +1,10 @@
 #pragma once
 
 #include "yaml-cpp/yaml.h"
+
 #include <string>
 #include <map>
+#include <vector>
 
 //#include "Data.h"
 //#include "InputRelated.h"
@@ -21,6 +23,7 @@ enum InterruptionInputType {
 extern std::string defaultMacroKey;
 extern std::map<std::string, int> mapOfKeys;
 extern std::map<int, std::string> keyboardHookSpecialVirtualKeyCodeToText;
+extern std::map<std::string, int> keybindingTextToKey;
 
 YAML::Node getDefaultSequenceList(bool withExample);
 YAML::Node getDefaultExtraKeySequences();

@@ -1,5 +1,6 @@
+#include "WindowOperations.h"
+
 #include "WindowSwitcherNew.h"
-#include "WindowRelated.h"
 
 WindowGroup* getGroup(HWND hwnd) {
     if (handleToGroup.count(hwnd)) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "WindowRelated.h"
+
 WindowGroup* getGroup(HWND hwnd);
 void ShowOnlyMainInGroup(WindowGroup* wg);
 void ShowOnlyMainInGroup(HWND hwnd);

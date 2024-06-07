@@ -1,7 +1,9 @@
 #pragma once
 
-#include <string>
 #include <yaml-cpp/yaml.h>
+
+#include <string>
+#include <vector>
 
 YAML::Node loadYaml(std::string programPath, const std::string& folderPath, const std::string& fileName, bool& wrongConfig);
 void saveYaml(YAML::Node &config, std::string path);

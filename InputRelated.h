@@ -1,17 +1,18 @@
 #pragma once
 
+#include "ConfigOperations.h"
+#include "Data.h"
+#include "DataStash.h"
+#include "WindowSwitcherNew.h"
+
+#include <yaml-cpp/yaml.h>
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <iostream>
 #include <string>
 #include <vector>
-#include <yaml-cpp/yaml.h>
-#include "ConfigOperations.h"
-#include <iostream>
-#include <chrono>
-#include <atomic>
-#include <condition_variable>
-
-#include "WindowSwitcherNew.h"
-#include "DataStash.h"
-#include "Data.h"
 
 struct Key {
 public:
@@ -55,17 +56,11 @@ private:
 
 public:
     int getAtAmountOfInputs() const;
-
     int getinTimeInterval_milliseconds() const;
-
     int getMacroPause() const;
-
     ManyInputsConfiguration(const YAML::Node& node);
-
     ManyInputsConfiguration(int atAmountOfInputs, int manyInputsDetectionDuration, int macroPause);
-
     bool fitsCurrentCase(std::vector<std::chrono::steady_clock::time_point>* inputsList);
-
     YAML::Node* toNode();
 };
 

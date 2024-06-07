@@ -1,11 +1,14 @@
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 
+#include "ConfigOperations.h"
+
 #include "WindowSwitcherNew.h"
 #include "GeneralUtils.h"
-#include <yaml-cpp/yaml.h>
+
+#include "yaml-cpp/yaml.h"
+
 #include <fstream>
 #include <iostream>
-#include <string>
 #include <optional>
 #include <cstdlib>
 #include <sys/stat.h>

@@ -1,7 +1,11 @@
 #pragma once
-#include <string>
+
+#include "yaml-cpp/yaml.h"
+
 #include <Windows.h>
+#include <string>
 #include <vector>
+#include <atomic>
 
 struct KeybindInfo {
     int id;
@@ -11,11 +15,8 @@ struct KeybindInfo {
     bool hidden = false;
 
     KeybindInfo(int id, std::string hotkey, std::string internalName, std::string description);
-
     KeybindInfo& setHidden(bool hidden);
-
     YAML::Node* toNode();
-
     std::string toString();
 };
 
