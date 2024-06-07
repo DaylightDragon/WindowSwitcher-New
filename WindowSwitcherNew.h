@@ -5,9 +5,19 @@
 #include <string>
 #include <Windows.h>
 
-std::map<std::string, int> getMapOfKeys();
+#include "WindowRelated.h"
+#include "Data.h"
+
+extern std::map<std::string, int> mapOfKeys;
+extern std::map<HWND, WindowGroup*> handleToGroup;
+extern std::atomic<Settings*> settings;;
+
+extern bool hideNotMainWindows;
+
 std::atomic<bool>& getStopMacroInput();
-//std::atomic<bool>& getInterruptedRightNow();
 std::string getCurrentVersion();
 bool windowIsLinkedManually(HWND hwnd);
 bool windowIsLinkedAutomatically(HWND hwnd);
+
+bool checkHungWindow(HWND hwnd);
+std::wstring getWindowName(HWND hwnd);

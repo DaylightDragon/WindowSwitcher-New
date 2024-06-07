@@ -58,7 +58,7 @@ class KeySequence {
                             getConfigInt(at, "holdFor", 2400, true),
                             getConfigInt(at, "afterKeyPress", 100, true)
                         );
-                        if (!getMapOfKeys().count(k.keyCode)) {
+                        if (!mapOfKeys.count(k.keyCode)) {
                             if (k.keyCode != "EXAMPLE") addConfigLoadingMessage("WARNING | A key with a non-valid keycode \"" + k.keyCode + "\" was not processed.");
                         }
                         else keys.push_back(k);
