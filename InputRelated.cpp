@@ -440,25 +440,6 @@ class InputsInterruptionManager {
             //cv.notify_all();
         }
 
-        static YAML::Node* getDefaultInterruptionConfigsList(InterruptionInputType type) {
-            YAML::Node* list = new YAML::Node(YAML::NodeType::Sequence);
-
-            ManyInputsConfiguration* conf = nullptr;
-            if (type == KEYBOARD) conf = new ManyInputsConfiguration(5, 5000, 14);
-            else if (type == MOUSE) conf = new ManyInputsConfiguration(5, 5000, 8);
-            else if (type == ANY_INPUT) {}
-            else {
-                addConfigLoadingMessage("unsupported type in getDefaultInterruptionConfigsList");
-                return list;
-            }
-
-            if (conf != nullptr) {
-                list->push_back(*conf->toNode());
-                delete conf;
-            }
-            return list;
-        }
-
         void addPendingSentInput(std::string key) {
             SentInput input = SentInput(key, std::chrono::steady_clock::now());
             std::lock_guard<std::mutex> threadSafetyLock(threadSafetyMutex, std::adopt_lock);

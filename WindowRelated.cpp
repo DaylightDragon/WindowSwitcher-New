@@ -135,4 +135,3 @@ int WindowGroup::size() {
 void WindowGroup::moveInOrder(HWND* hwnd, int times) {}
 
 // ----- Nothing -----
-
