@@ -22,6 +22,7 @@ public:
 	int minimalGameWindowSizeX = 802;
 	int minimalGameWindowSizeY = 631;
 	bool ignoreManuallyLinkedWindows = true;
+	bool automaticallyReturnToLastWindow = true;
 
 	Settings(const YAML::Node& config);
 };
