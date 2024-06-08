@@ -1,8 +1,8 @@
 #pragma once
 
-#include <chrono>
-#include <vector>
 #include <Windows.h>
+#include <vector>
+#include <chrono>
 
 struct WindowInfo {
 	HWND hwnd;

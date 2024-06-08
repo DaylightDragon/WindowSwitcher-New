@@ -1,7 +1,9 @@
-#include "WindowRelated.h"
+#include <Windows.h>
+#include <vector>
+#include <chrono>
 
-#include "WindowOperations.h"
 #include "WindowSwitcherNew.h"
+#include "WindowOperations.h"
 
 // ----- WindowInfo -----
 
