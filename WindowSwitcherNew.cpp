@@ -152,7 +152,7 @@ bool registerSingleHotkey(int id, UINT fsModifiers, UINT vk, std::string hotkeyN
 
 void registerHotkeys() {
     failedHotkeys.clear();
-    int totalHotkeys = 28;
+    int failsExitThreshold = 10;
 
     std::vector<KeybindInfo>* keybinds = getActiveKeybinds();
     for (KeybindInfo info : *keybinds) {
@@ -200,10 +200,10 @@ void registerHotkeys() {
             std::cout << "[!] Failed to load " << elem << "\n";
         }
 
-        if (failedHotkeys.size() >= totalHotkeys) { // that value can be not updated in time
-            std::cout << "WARNING | Most likely you have started multiple instances of this programm, sadly you can use only one at a time\n";
+        if (failedHotkeys.size() >= failsExitThreshold) { // that value can be not updated in time
+            std::cout << "WARNING | Most likely you have started multiple instances of this programm, sadly you can use only one at a time\nIf the issue is just overlapping hotkeys, fix that in the keybinds config and restart the app";
             if(isConsoleAllocated()) _getch();
-            exit(0);
+            ExitProcess(0);
         }
     }
 

@@ -173,12 +173,8 @@ YAML::Node loadYaml(std::string programPath, const std::string& folderPath, cons
         //std::cout << "Can't open the Yaml" << endl;
     //}
     
-    std::cout << "initial " << programPath << std::endl;
-
     std::string folderFullPath = getProgramFolderPath(programPath) + "/" + folderPath;
     std::string fullPath = getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName;
-
-    std::cout << "full path " << fullPath << std::endl;
 
     if (getProgramFolderPath(programPath) == "C:\Windows\System32") {
         std::cout << "The program was launched in System32!" << std::endl; // idk if the path is the working direcotry, but I had such issues in Java
