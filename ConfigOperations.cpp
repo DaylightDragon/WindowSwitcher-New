@@ -126,7 +126,9 @@ public:
         }*/
 };
 
-YAML::Node loadYaml(std::string programPath, const std::string& folderPath, const std::string& fileName, bool& wrongConfig) {
+YAML::Node loadYaml(std::string programPath, const std::string& folderPath, const std::string& fileName, bool& wrongConfig, std::string configTypeName) {
+    if (configTypeName.length() == 0) configTypeName = "a"; // for the context
+
     //struct stat info;
     //if (stat(directory.c_str(), &info) != 0) {
     //    // Create the directory
@@ -170,9 +172,13 @@ YAML::Node loadYaml(std::string programPath, const std::string& folderPath, cons
     //if (!file) {
         //std::cout << "Can't open the Yaml" << endl;
     //}
+    
+    std::cout << "initial " << programPath << std::endl;
 
     std::string folderFullPath = getProgramFolderPath(programPath) + "/" + folderPath;
     std::string fullPath = getProgramFolderPath(programPath) + "/" + folderPath + "/" + fileName;
+
+    std::cout << "full path " << fullPath << std::endl;
 
     if (getProgramFolderPath(programPath) == "C:\Windows\System32") {
         std::cout << "The program was launched in System32!" << std::endl; // idk if the path is the working direcotry, but I had such issues in Java
@@ -199,7 +205,7 @@ YAML::Node loadYaml(std::string programPath, const std::string& folderPath, cons
         config = YAML::Load(file2);
     }
     catch (const std::exception& e) {
-        addConfigLoadingMessage("WARNING | Error on reading the config file (not processing!):\nERROR | " + std::string(e.what()));
+        addConfigLoadingMessage("WARNING | Error on reading " + configTypeName + " config file (not processing!):\nERROR | " + std::string(e.what()));
         wrongConfig = true;
         return config;
     }

@@ -17,6 +17,7 @@
 #include <csignal>
 
 #include "ConfigOperations.h"
+#include "gui/ConsoleManagement.h"
 #include "InputRelated.h"
 #include "GeneralUtils.h"
 #include "CustomHotkeys.h"
@@ -45,7 +46,8 @@ std::map<int, std::vector<HWND>> autoGroups;
 
 // Permanent settings
 std::wstring rx_name = L"Roblox";
-std::string programPath;
+//std::string programPath;
+char programPath[MAX_PATH];
 
 // Main misc settings variables
 int macroDelayInitial;
@@ -105,6 +107,10 @@ bool getDebugMode() {
 
 std::string getCurrentVersion() {
     return currentVersion;
+}
+
+std::string getProgramPath() {
+    return programPath;
 }
 
 void printTitle() {
@@ -937,7 +943,7 @@ void hideForgr() {
     //std::cout << (curHwnd == GetDesktopWindow());
 
     // taskbar, other desktop components get back on their own
-    if (h != FindWindow("Shell_TrayWnd", NULL) && !checkHungWindow(h)) {
+    if (h != FindWindow("Shell_TrayWnd", NULL) && !checkHungWindow(h) && h != GetConsoleWindow()) {
         bool allow = false;
         if (settings.load()->allowAnyToBackgroundWindows) {
             allow = true;
@@ -1309,7 +1315,7 @@ bool loadConfig(ConfigType type) {
         bool wasEmpty = false;
 
         try {
-            config = loadYaml(programPath, folderPath, fileName, wrongConfig);
+            config = loadYaml(programPath, folderPath, fileName, wrongConfig, configTypeToString(type));
             wasEmpty = config.IsNull();
         }
         /*catch (YAML::ParserException e) {
@@ -1355,13 +1361,13 @@ bool loadConfig(ConfigType type) {
         return true;
     }
     catch (const YAML::Exception& e) {
-        addConfigLoadingMessage("WARNING | A completely unexpected YAML::Exception error happened while loading the config:\nERROR | " + std::string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
+        addConfigLoadingMessage("WARNING | A completely unexpected YAML::Exception error happened while loading " + configTypeToString(type) + " config:\nERROR | " + std::string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
     }
     catch (const std::exception& e) {
-        addConfigLoadingMessage("WARNING | A completely unexpected std::exception error happened while loading the config:\nERROR | " + std::string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
+        addConfigLoadingMessage("WARNING | A completely unexpected std::exception error happened while loading " + configTypeToString(type) + " config:\nERROR | " + std::string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
     }
     catch (const YAML::BadConversion& e) {
-        addConfigLoadingMessage("WARNING | A completely unexpected YAML::BadConversion error happened while loading the config:\nERROR | " + std::string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
+        addConfigLoadingMessage("WARNING | A completely unexpected YAML::BadConversion error happened while loading " + configTypeToString(type) + " config:\nERROR | " + std::string(e.what()) + "\nWARNING | You can report this bug to the developer.\n");
     }
 }
 
@@ -1637,13 +1643,24 @@ void initSomeValues() {
     
 }
 
-int actualMain(int argc, char* argv[]) {
+int actualMain() {
     // Setting error handlers for non-debug configuration
     if (true || !debugMode) {
         signal(SIGSEGV, signalHandler);
         signal(SIGFPE, signalHandler);
         SetUnhandledExceptionFilter(&UnhandledExceptionHandler);
     }
+    initConsole();
+
+    /*HWND consoleWindow = GetConsoleWindow();
+    if (consoleWindow == NULL)
+    {
+        AllocConsole();
+    }*/
+
+
+    GetModuleFileName(NULL, programPath, MAX_PATH);
+    std::cout << "Path to the executable file: " << std::endl << programPath << std::endl;
 
     initSomeValues();
 
@@ -1655,7 +1672,6 @@ int actualMain(int argc, char* argv[]) {
     printTitle();
 
     setlocale(0, "");
-    programPath = argv[0];
     initializeRandom();
     reloadConfigs();
     rememberInitialPermanentSettings();
@@ -1752,6 +1768,9 @@ int actualMain(int argc, char* argv[]) {
                 std::cout << "\nHave reloaded all configs" << std::endl;
                 printConfigLoadingMessages();
             }
+            else if (msg.wParam == 32) {
+                showOrHideConsole();
+            }
             // EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE
             if (handleToGroup.count(curHwnd)) {
                 if (msg.wParam == 3) {
@@ -1816,13 +1835,14 @@ int actualMain(int argc, char* argv[]) {
     return 0;
 }
 
-int main(int argc, char* argv[]) {
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
     if (debugMode) {
-        actualMain(argc, argv);
+        actualMain();
     }
     else {
         try {
-            actualMain(argc, argv);
+            actualMain();
         }
         catch (const YAML::Exception& e) {
             std::cerr << "ERROR | A YAML::Exception caught: " << typeid(e).name() << std::endl;
@@ -1844,4 +1864,8 @@ int main(int argc, char* argv[]) {
             terminationOnFailure();
         }
     }
+}
+
+int main(int argc, char* argv[]) {
+    
 }

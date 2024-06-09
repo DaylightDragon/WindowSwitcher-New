@@ -17,6 +17,7 @@ extern bool hideNotMainWindows;
 
 std::atomic<bool>& getStopMacroInput();
 std::string getCurrentVersion();
+std::string getProgramPath();
 bool windowIsLinkedManually(HWND hwnd);
 bool windowIsLinkedAutomatically(HWND hwnd);
 

@@ -3,7 +3,7 @@
 #include <string>
 #include <yaml-cpp/yaml.h>
 
-YAML::Node loadYaml(std::string programPath, const std::string& folderPath, const std::string& fileName, bool& wrongConfig);
+YAML::Node loadYaml(std::string programPath, const std::string& folderPath, const std::string& fileName, bool& wrongConfig, std::string configTypeName);
 void saveYaml(YAML::Node &config, std::string path);
 void addConfigLoadingMessage(std::string message);
 void printConfigLoadingMessages();
