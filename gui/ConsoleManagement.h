@@ -9,8 +9,7 @@
 #define WINDOW_SWITCHER_CONSOLE_MANAGEMENT_H
 
 extern bool startWithConsole;
-extern HWND g_hwndConsole;
-extern std::ostringstream preConsoleOutput;
+extern HWND console_window;
 extern std::streambuf* default_cout_buff;
 
 #endif
@@ -18,3 +17,4 @@ extern std::streambuf* default_cout_buff;
 void showOrHideConsole();
 void showOrHideConsole(bool state);
 void initConsole();
+bool isConsoleAllocated();

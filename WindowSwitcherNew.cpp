@@ -202,7 +202,7 @@ void registerHotkeys() {
 
         if (failedHotkeys.size() >= totalHotkeys) { // that value can be not updated in time
             std::cout << "WARNING | Most likely you have started multiple instances of this programm, sadly you can use only one at a time\n";
-            _getch();
+            if(isConsoleAllocated()) _getch();
             exit(0);
         }
     }
@@ -1602,7 +1602,7 @@ void terminationOnFailure() {
     }
 
     std::cout << "[!!!] The application encountered an error that it doesn't want to ingnore, so it has exited." << std::endl;
-    _getch();
+    if (isConsoleAllocated()) _getch();
     ExitProcess(1);
 }
 
@@ -1769,6 +1769,7 @@ int actualMain() {
                 printConfigLoadingMessages();
             }
             else if (msg.wParam == 32) {
+                //std::cout << "Testing..." << std::endl;
                 showOrHideConsole();
             }
             // EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE

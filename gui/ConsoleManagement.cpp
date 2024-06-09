@@ -5,10 +5,27 @@
 #include <sstream>
 #include "Windows.h"
 
+class CustomBuffer : public std::streambuf {
+public:
+    int_type overflow(int_type c) override {
+        if (c != traits_type::eof()) {
+            buffer += c;
+        }
+        return c;
+    }
+
+    std::string getBuffer() const {
+        return buffer;
+    }
+
+private:
+    std::string buffer;
+};
+
 bool startWithConsole = true;
-HWND g_hwndConsole = nullptr;
-std::ostringstream preConsoleOutput;
+HWND console_window = nullptr;
 std::streambuf* default_cout_buff = std::cout.rdbuf();
+CustomBuffer buffer;
 
 void createConsole() {
     // Redirect to default buffer
@@ -22,18 +39,28 @@ void createConsole() {
     freopen_s(&pConsoleStream, "CONOUT$", "w", stdout);
 }
 
+void activateOwnBuffer() {
+    if (!isConsoleAllocated()) {
+        std::cout.rdbuf(&buffer);
+    }
+}
+
 // private implementation
 void showOrHideConsole(bool specific, bool state) {
-    if ((specific && state) || (g_hwndConsole == nullptr || !IsWindowVisible(g_hwndConsole))) {
-        if (g_hwndConsole == nullptr) {
+    if ((specific && state) || (console_window == nullptr || !IsWindowVisible(console_window))) {
+        if (console_window == nullptr) {
             createConsole();
-            std::cout << preConsoleOutput.str();
-            preConsoleOutput.clear();
-            g_hwndConsole = GetConsoleWindow();
+            std::cout << buffer.getBuffer();
+            //<< preConsoleOutput.str();
+            //preConsoleOutput.clear();
+            console_window = GetConsoleWindow();
         }
-        else ShowWindow(g_hwndConsole, SW_SHOW);
+        else ShowWindow(console_window, SW_SHOW);
     }
-    else ShowWindow(g_hwndConsole, SW_HIDE);
+    else {
+        ShowWindow(console_window, SW_HIDE);
+        activateOwnBuffer();
+    }
 }
 
 void showOrHideConsole(bool state) {
@@ -45,5 +72,10 @@ void showOrHideConsole() {
 }
 
 void initConsole() {
+    activateOwnBuffer();
     if (startWithConsole) showOrHideConsole();
+}
+
+bool isConsoleAllocated() {
+    return console_window != nullptr;
 }
