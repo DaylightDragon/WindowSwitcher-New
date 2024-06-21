@@ -3,7 +3,7 @@
 
 cmake_minimum_required (VERSION 3.8)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 #if (MSVC_VERSION GREATER_EQUAL "1900")
 #    include(CheckCXXCompilerFlag)
@@ -24,6 +24,9 @@ add_subdirectory(${YAML_CPP_DIR})
 # Include the "yaml-cpp" headers
 include_directories(${YAML_CPP_DIR}/include)
 
+set(ULTRALIGHT_CPP_DIR ${CMAKE_SOURCE_DIR}/libraries/ultralight-sdk-1.3.0-win-x64)
+add_subdirectory(${ULTRALIGHT_CPP_DIR})
+include_directories(${ULTRALIGHT_CPP_DIR}/include)
 
 # Specify the .cpp file for which a header file is required
 #set(SOURCE_FILE "ConfigOperations.cpp")

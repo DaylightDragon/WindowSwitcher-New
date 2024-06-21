@@ -16,6 +16,8 @@
 #include <condition_variable>
 #include <csignal>
 
+#include "Ultralight/Ultralight.h"
+
 #include "ConfigOperations.h"
 #include "gui/ConsoleManagement.h"
 #include "InputRelated.h"
@@ -1643,6 +1645,9 @@ void initSomeValues() {
     
 }
 
+//#include <optional> // TESTING THAT C++ 17 WORKS YAY
+//std::optional<int> testVar;
+
 int actualMain() {
     // Setting error handlers for non-debug configuration
     if (true || !debugMode) {
@@ -1658,9 +1663,11 @@ int actualMain() {
         AllocConsole();
     }*/
 
+    //std::cout << testVar.has_value() << std::endl;
+    //std::cout << __cplusplus << std::endl;
 
     GetModuleFileName(NULL, programPath, MAX_PATH);
-    std::cout << "Path to the executable file: " << std::endl << programPath << std::endl;
+    //std::cout << "Path to the executable file: " << std::endl << programPath << std::endl;
 
     initSomeValues();
 
