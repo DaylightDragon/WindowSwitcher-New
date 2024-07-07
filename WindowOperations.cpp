@@ -1,6 +1,9 @@
 #include "WindowSwitcherNew.h"
 #include "WindowRelated.h"
 
+#include <mutex>
+#include <shared_mutex>
+
 WindowGroup* getGroup(HWND hwnd) {
     if (handleToGroup.count(hwnd)) {
         std::map<HWND, WindowGroup*>::iterator it = handleToGroup.find(hwnd);
@@ -89,6 +92,7 @@ void deleteWindow(HWND hwnd) {
 }
 
 void deleteWindowGroup(WindowGroup* wg) {
+    //std::unique_lock<std::shared_mutex> lock(mapMutex); // MAY CAUSE CRASHES!!!
     /*for (auto& p : referenceToGroup)
         std::cout << p.first << " " << p.second << " " << endl;*/
     std::map<HWND, WindowGroup*>::iterator it;

@@ -23,6 +23,19 @@ public:
 	int minimalGameWindowSizeY = 631;
 	bool ignoreManuallyLinkedWindows = true;
 	bool automaticallyReturnToLastWindow = true;
+	
+	int overlayMonitorNumber = 1;
+	int overlayPositionTopBottomOrCenter = 2;
+	int overlayPositionLeftRightOrCenter = 2;
+	int overlayPositionPaddingX = 10;
+	int overlayPositionPaddingY = 40;
+	int overlaySizeX = 100;
+	int overlaySizeY = 40;
+	int overlayBarWidth = 80;
+	int overlayBarHeight = 5;
+	int overlayTextSize = 18;
+	int overlayTextOutlineSize = 4;
+	int overlayTextVerticalOffset = -4;
 
 	Settings(const YAML::Node& config);
 };

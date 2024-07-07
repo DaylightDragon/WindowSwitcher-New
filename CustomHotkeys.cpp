@@ -26,11 +26,17 @@ KeybindInfo& KeybindInfo::setHidden(bool hidden) {
     return *this;
 }
 
+KeybindInfo& KeybindInfo::setDisabledByDefault(bool disabled) {
+    this->disabledByDefault = disabled;
+    return *this;
+}
+
 YAML::Node* KeybindInfo::toNode() {
     YAML::Node* node = new YAML::Node();
     //setConfigValue(*node, "internalName", this->internalName);
     setConfigValue(*node, "description", this->description);
-    setConfigValue(*node, "hotkey", this->hotkey);
+    if(disabledByDefault) setConfigValue(*node, "hotkey", "Disabled " + this->hotkey);
+    else setConfigValue(*node, "hotkey", this->hotkey);
     return node;
 }
 
@@ -197,8 +203,9 @@ std::vector<KeybindInfo>* getDefaultKeybinds() {
     result->push_back(KeybindInfo(29, "Ctrl + Alt + G", "setMacroKeyOrSequenceForGroup", "Set the macro key (or sequence) for this group"));
     result->push_back(KeybindInfo(31, "Alt + H", "reloadAllConfigs", "Reload all configs (NO KEYBINDS RELOADING FOR NOW)"));
     result->push_back(KeybindInfo(32, "Alt + /", "showHideConsole", "Show or hide the console window"));
-    result->push_back(KeybindInfo(20, "Disabled Alt + P", "showDebugListOfLinkedWindows", "Show the debug list of the linked windows").setHidden(true));
-    result->push_back(KeybindInfo(21, "Disabled Alt + \\", "someTest", "Test").setHidden(true));
+    result->push_back(KeybindInfo(33, "Alt + N", "toggleStatusOverlay", "Toggle the status overlay's visibility").setDisabledByDefault(true));
+    result->push_back(KeybindInfo(20, "Alt + P", "showDebugListOfLinkedWindows", "Show the debug list of the linked windows").setDisabledByDefault(true).setHidden(true));
+    result->push_back(KeybindInfo(21, "Alt + \\", "someTest", "Test").setDisabledByDefault(true).setHidden(true));
 
     return result;
 }

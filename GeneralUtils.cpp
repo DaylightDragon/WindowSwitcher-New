@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
+#include <Windows.h>
 
 //getProgramFolderPath(string(argv[0]));
 std::string getProgramFolderPath(const std::string& programPath) {
@@ -29,4 +30,85 @@ int randomizeValue(int value, int percentage, int maxDifference) {
     int randomDiff = rand() % (2 * maxDiff + 1) - maxDiff;
     int randomizedValue = value + randomDiff;
     return randomizedValue;
+}
+
+RECT GetTaskbarSize() {
+    RECT taskbarRect;
+    HWND taskbar = FindWindow("Shell_TrayWnd", NULL);
+
+    GetWindowRect(taskbar, &taskbarRect);
+
+    RECT result = { 0 };
+
+    //std::cout << "Taskbar: " << taskbarRect.left << " X " << taskbarRect.right << ", Y " << taskbarRect.top << " " << taskbarRect.bottom << std::endl;
+
+    APPBARDATA abd = { sizeof(APPBARDATA) };
+    SHAppBarMessage(ABM_GETTASKBARPOS, &abd);
+    if (abd.uEdge == ABE_BOTTOM) {
+        result.bottom = taskbarRect.bottom - taskbarRect.top;
+    }
+    else if (abd.uEdge == ABE_RIGHT) {
+        result.right = taskbarRect.right - taskbarRect.left;
+    }
+    else if (abd.uEdge == ABE_TOP) {
+        result.top = taskbarRect.top - taskbarRect.bottom;
+    }
+    else if (abd.uEdge == ABE_LEFT) {
+        result.left = taskbarRect.left - taskbarRect.right;
+    }
+
+    return result;
+}
+
+// Структура для передачи данных в функцию EnumMonitorCallback
+struct MonitorInfoData {
+    int monitorIndex;
+    MONITORINFO info;
+    int currentMonitorIndex;
+};
+
+// Функция для перебора мониторов
+BOOL EnumMonitorCallback(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
+    // Получаем структуру MONITORINFO для текущего монитора
+    MONITORINFO monitorInfo;
+    monitorInfo.cbSize = sizeof(MONITORINFO);
+    GetMonitorInfo(hMonitor, &monitorInfo);
+
+    // Получаем информацию о нужном мониторе (переданную через dwData)
+    auto data = reinterpret_cast<MonitorInfoData*>(dwData);
+
+    // Проверяем, совпадает ли индекс текущего монитора с требуемым
+    if (data->currentMonitorIndex == data->monitorIndex) {
+        // Копируем информацию о мониторе в структуру info
+        memcpy(&data->info, &monitorInfo, sizeof(MONITORINFO));
+        // Возвращаем FALSE, чтобы прекратить перебор мониторов
+        return FALSE;
+    }
+
+    // Увеличиваем счетчик текущего монитора
+    ++data->currentMonitorIndex;
+    // Продолжаем перебирать мониторы
+    return TRUE;
+}
+
+MONITORINFO GetMonitorInfoByIndex(int monitorIndex) {
+    // Получаем количество подключенных мониторов
+    int monitorCount = GetSystemMetrics(SM_CMONITORS);
+
+    // Гарантируем корректность индекса
+    if (monitorIndex < 0) monitorIndex = 0;
+    if (monitorIndex >= monitorCount) monitorIndex = monitorCount - 1;
+
+    //std::cout << "Monitor " << monitorIndex << " of " << monitorCount << "\n";
+
+    // Создаем структуру для передачи данных
+    MonitorInfoData data;
+    data.monitorIndex = monitorIndex;
+    data.currentMonitorIndex = 0;
+    data.info.cbSize = sizeof(MONITORINFO);
+
+    // Перебираем все мониторы
+    EnumDisplayMonitors(NULL, NULL, EnumMonitorCallback, (LPARAM)&data);
+
+    return data.info;
 }

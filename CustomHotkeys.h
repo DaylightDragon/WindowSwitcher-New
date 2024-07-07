@@ -9,10 +9,12 @@ struct KeybindInfo {
     std::string internalName;
     std::string description;
     bool hidden = false;
+    bool disabledByDefault = false;
 
     KeybindInfo(int id, std::string hotkey, std::string internalName, std::string description);
 
     KeybindInfo& setHidden(bool hidden);
+    KeybindInfo& setDisabledByDefault(bool disabled);
 
     YAML::Node* toNode();
 

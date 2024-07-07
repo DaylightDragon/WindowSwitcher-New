@@ -1,6 +1,7 @@
 ﻿// Window Switcher
 
 #pragma comment(lib, "Dwmapi.lib") // for DwmGetWindowAttribute and so on
+#pragma comment (lib, "gdiplus.lib")
 
 #include <yaml-cpp/yaml.h>
 #include <windows.h>
@@ -15,6 +16,10 @@
 #include <dwmapi.h>
 #include <condition_variable>
 #include <csignal>
+#include <tchar.h>
+#include <shared_mutex>
+//#include <objidl.h>
+#include <gdiplus.h>
 
 #include "Ultralight/Ultralight.h"
 
@@ -28,6 +33,7 @@
 #include "Data.h"
 #include "DataStash.h"
 #include "ConfigMigrations.h"
+#include "Overlay.h"
 
 std::string currentVersion = "2.3";
 
@@ -35,6 +41,7 @@ std::string currentVersion = "2.3";
 
 // Windows, sequences and managers
 std::map<HWND, WindowGroup*> handleToGroup;
+std::shared_mutex mapMutex; // MAY CAUSE CRASHES ON START!!!
 std::map<WindowGroup*, KeySequence*> groupToSequence;
 WindowGroup* lastGroup;
 KeySequence* mainSequence;
@@ -70,6 +77,7 @@ int sleepRandomnessMaxDiff = 40;
 
 // Runtime/status variables
 std::atomic<bool> stopMacroInput = true;
+std::atomic<bool> currentlyWaitingOnInterruption = false;
 bool initialConfigLoading = true;
 bool hideNotMainWindows = false;
 int currentHangWindows = 0;
@@ -96,9 +104,14 @@ std::condition_variable macroWaitCv;
 std::mutex* macroWaitMutex = nullptr;
 std::unique_lock<std::mutex>* macroWaitLock = nullptr;
 
+// Overlay
+std::atomic<float> overlayValue = -1;
+std::atomic<int> overlayActiveStateFullAmount;
+std::atomic<int> overlayActiveStateCurrentAmount;
+
 // Debug related
 bool debugMode = IsDebuggerPresent();;
-bool registerKeyboardHookInDebug = false;
+bool registerKeyboardHookInDebug = true;
 bool registerKeyboardMouseInDebug = true;
 
 //std::string mainConfigName = "WsSettings/settings.yml";
@@ -114,6 +127,22 @@ std::string getCurrentVersion() {
 std::string getProgramPath() {
     return programPath;
 }
+
+float getOverlayValue() {
+    return overlayValue.load();
+}
+
+int getOverlayActiveStateFullAmount() {
+    return overlayActiveStateFullAmount.load();
+}
+
+int getOverlayActiveStateCurrentAmount() {
+    return overlayActiveStateCurrentAmount.load();
+}
+
+//std::shared_mutex* getMapMutex() {
+//    return &mapMutex;
+//}
 
 void printTitle() {
     std::cout << "Window Switcher - Version " << getCurrentVersion() << "\n\n";
@@ -273,6 +302,8 @@ bool waitIfInterrupted() {
     if (interruptionManager == nullptr || !interruptionManager.load()->isModeEnabled().load()) return false;
     int waitFor = interruptionManager.load()->getUntilNextMacroRetryAtomic().load();
     bool interrupted = waitFor > 0;
+    currentlyWaitingOnInterruption.store(interrupted);
+
     if (interrupted) {
         //std::cout << "Waiting...\n";
         //std::unique_lock<std::mutex> macroWaitLock = std::unique_lock<std::mutex>(std::mutex());
@@ -307,6 +338,77 @@ bool waitIfInterrupted() {
     }
 
     return interrupted;
+}
+
+WindowInfo* getWindowInfoFromHandle(HWND hwnd) {
+    WindowInfo* wi = nullptr;
+
+    WindowGroup* wg = handleToGroup[hwnd];
+    if (wg != nullptr) {
+        wi = wg->getWindowInfoFromHandle(hwnd);
+    }
+
+    return wi;
+}
+
+KeySequence* getKeySequenceFromHandle(HWND hwnd) {
+    KeySequence* keySeq = nullptr;
+
+    WindowGroup* wg = handleToGroup[hwnd];
+    if (wg != nullptr) {
+        WindowInfo* wi = wg->getWindowInfoFromHandle(hwnd);
+        if (wi != nullptr) {
+            keySeq = mainSequence;
+            if (groupToSequence.count(wg)) keySeq = groupToSequence[wg];
+        }
+    }
+
+    return keySeq;
+}
+
+std::pair<OverlayState, float> getCurrentCooldownPartitionForWindow(HWND hwnd) {
+    WindowInfo* wi = getWindowInfoFromHandle(hwnd);
+    if (wi == nullptr) return std::pair<OverlayState, float>(NOT_INITIALIZED, 3);
+    KeySequence* keySeq = getKeySequenceFromHandle(hwnd);
+    if (keySeq == nullptr) return std::pair<OverlayState, float>(NOT_INITIALIZED, 3);
+
+    auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count(); // here
+    bool cooldown = timePassedSince < keySeq->getCooldownPerWindow();
+    if (cooldown) {
+        return std::pair<OverlayState, float>(NORMAL, 1 - static_cast<float>(timePassedSince) / static_cast<float>(keySeq->getCooldownPerWindow()));
+    }
+    else return std::pair<OverlayState, float>(SEQUENCE_ACTIVE, 0);
+}
+
+std::pair<OverlayState, float> getTheLeastCooldownPartition() {
+    float leastValue = 2;
+    OverlayState itsState = NOT_INITIALIZED;
+    std::shared_lock<std::shared_mutex> lock(mapMutex); // MAY CAUSE CRASHES!!!
+    for (auto& it : handleToGroup) {
+        std::pair<OverlayState, float> newValue = getCurrentCooldownPartitionForWindow(it.first);
+        if (newValue.second < leastValue) {
+            leastValue = newValue.second;
+            itsState = newValue.first;
+        }
+    }
+
+    return std::pair<OverlayState, float>(itsState, leastValue);
+}
+
+void setNewOverlayValue() {
+    std::pair<OverlayState, float> leastValue = getTheLeastCooldownPartition();
+    if (leastValue.first == SEQUENCE_ACTIVE) {
+        //std::cout << stopMacroInput.load() << " " << currentlyWaitingOnInterruption.load() << "\n";
+    }
+    if (leastValue.first == SEQUENCE_ACTIVE && (stopMacroInput.load() || currentlyWaitingOnInterruption.load())) {
+        leastValue.first = SEQUENCE_READY;
+        leastValue.second = interruptionManager.load()->getUntilNextMacroRetryAtomic().load();
+    }
+
+    overlayValue.store(leastValue.second);
+    setOverlayState(leastValue.first);
+
+    redrawOverlay(); 
 }
 
 void keyPressInput(WORD keyCode)
@@ -367,6 +469,7 @@ bool performASequence(HWND w) {
     if (groupToSequence.count(handleToGroup[w])) {
         std::vector<Key> keys = groupToSequence[handleToGroup[w]]->getKeys();
         if (keys.size() > 0) {
+            //setNewOverlayValue();
             for (auto& el : keys) {
                 if (stopMacroInput.load()) return false;
                 shouldRestartSequence = pressAndUnpressAKey(w, el);
@@ -379,6 +482,7 @@ bool performASequence(HWND w) {
         }
     }
     else {
+        //setNewOverlayValue();
         for (auto& el : mainSequence->getKeys()) {
             if (stopMacroInput.load()) return false;
             //std::cout << "Pressing\n";
@@ -388,32 +492,6 @@ bool performASequence(HWND w) {
         }
     }
     return shouldRestartSequence;
-}
-
-WindowInfo* getWindowInfoFromHandle(HWND hwnd) {
-    WindowInfo* wi = nullptr;
-
-    WindowGroup* wg = handleToGroup[hwnd];
-    if (wg != nullptr) {
-        wi = wg->getWindowInfoFromHandle(hwnd);
-    }
-
-    return wi;
-}
-
-KeySequence* getKeySequenceFromHandle(HWND hwnd) {
-    KeySequence* keySeq = nullptr;
-
-    WindowGroup* wg = handleToGroup[hwnd];
-    if (wg != nullptr) {
-        WindowInfo* wi = wg->getWindowInfoFromHandle(hwnd);
-        if (wi != nullptr) {
-            keySeq = mainSequence;
-            if (groupToSequence.count(wg)) keySeq = groupToSequence[wg];
-        }
-    }
-
-    return keySeq;
 }
 
 bool checkCooldownActive(HWND hwnd) {
@@ -437,7 +515,7 @@ bool checkCooldownActiveAndRefresh(HWND hwnd) {
     KeySequence* keySeq = getKeySequenceFromHandle(hwnd);
     if (keySeq == nullptr) return false;
 
-    auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count();
+    auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count(); // here
     bool cooldown = timePassedSince < keySeq->getCooldownPerWindow();
     //std::cout << timePassedSince << " " << keySeq->getCooldownPerWindow() << std::endl;
 
@@ -464,6 +542,7 @@ bool focusAndSendSequence(HWND hwnd) { // find this
     bool shouldRestartSequence = true;
     while (shouldRestartSequence) {
         if (stopMacroInput.load()) return anySequenceInputHappened;
+        //setNewOverlayValue();
         waitIfInterrupted();
         if (stopMacroInput.load()) return anySequenceInputHappened;
         bool cooldown = checkCooldownActiveAndRefresh(hwnd); // can't call twice, and not two separate funcs to not look for objects again
@@ -509,10 +588,15 @@ bool focusAndSendSequence(HWND hwnd) { // find this
 
 bool performInputsEverywhere() {
     bool anySequenceInputHappened = false;
+    overlayActiveStateFullAmount.store(handleToGroup.size());
+    overlayActiveStateCurrentAmount.store(1);
+
     for (auto& it : handleToGroup) {
         if (stopMacroInput.load()) return true;
         if (focusAndSendSequence(it.first)) anySequenceInputHappened = true;
         customSleep(macroDelayBeforeSwitching);
+
+        overlayActiveStateCurrentAmount.store(overlayActiveStateCurrentAmount.load() + 1);
     }
     return anySequenceInputHappened;
 }
@@ -1376,6 +1460,7 @@ bool loadConfig(ConfigType type) {
 void reloadConfigs() {
     loadConfig(MAIN_CONFIG);
     loadConfig(KEYBINDS_CONFIG);
+    repositionTheOverlay();
 }
 
 LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -1542,11 +1627,12 @@ void macroDelayModificationLoop() {
                 notifyTheMacro();
                 //interruptedRightNow.store(false);
                 if(interruptionManager.load()->getInformOnEvents() && !getStopMacroInput().load()) std::cout << "Unpaused\n";
-                
             }
             else {
                 storeCurDelay(curValue);
             }
+
+            setNewOverlayValue();
         }
         Sleep(1000);
     }
@@ -1645,10 +1731,13 @@ void initSomeValues() {
     
 }
 
+Gdiplus::GdiplusStartupInput gdiplusStartupInput;
+ULONG_PTR gdiplusToken;
+
 //#include <optional> // TESTING THAT C++ 17 WORKS YAY
 //std::optional<int> testVar;
 
-int actualMain() {
+int actualMain(HINSTANCE hInstance) {
     // Setting error handlers for non-debug configuration
     if (true || !debugMode) {
         signal(SIGSEGV, signalHandler);
@@ -1684,6 +1773,11 @@ int actualMain() {
     rememberInitialPermanentSettings();
     registerHotkeys();
     printConfigLoadingMessages();
+
+    // Инициализируем GDI+
+    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+    HWND timeOverlayWindow = CreateOverlayWindow(hInstance, _T("WSBarOverlayWindow"), 200);
+    //DrawScale(timeOverlayWindow, 1);
 
     //helpGenerateKeyMap();
 
@@ -1779,6 +1873,9 @@ int actualMain() {
                 //std::cout << "Testing..." << std::endl;
                 showOrHideConsole();
             }
+            else if (msg.wParam == 33) {
+                toggleOverlayVisibility();
+            }
             // EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE
             if (handleToGroup.count(curHwnd)) {
                 if (msg.wParam == 3) {
@@ -1846,11 +1943,11 @@ int actualMain() {
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     if (debugMode) {
-        actualMain();
+        actualMain(hInstance);
     }
     else {
         try {
-            actualMain();
+            actualMain(hInstance);
         }
         catch (const YAML::Exception& e) {
             std::cerr << "ERROR | A YAML::Exception caught: " << typeid(e).name() << std::endl;
