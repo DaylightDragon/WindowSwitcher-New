@@ -96,6 +96,10 @@ LRESULT CALLBACK OverlayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             wideString = L"NAN";
             color = Gdiplus::Color(255, 255, 255);
         }
+        else if (st == MACRO_DISABLED) {
+            wideString = L"OFF";
+            color = Gdiplus::Color(100, 100, 100);
+        }
         else if (st == SEQUENCE_ACTIVE) {
             wideString = L"A " + std::to_wstring(getOverlayActiveStateCurrentAmount()) + L"/" + std::to_wstring(getOverlayActiveStateFullAmount());
         }
@@ -110,6 +114,7 @@ LRESULT CALLBACK OverlayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         int height = settings.load()->overlaySizeY;
         int overlayBarWidth = settings.load()->overlayBarWidth;
         int overlayBarHeight = settings.load()->overlayBarHeight;
+        int overlayBarOutlineSize = settings.load()->overlayBarOutlineSize;
 
         // Clearing
         graphics.Clear(Gdiplus::Color(0, 0, 0, 0));
@@ -119,13 +124,18 @@ LRESULT CALLBACK OverlayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 
         graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
 
+        Gdiplus::Color outlineColor = Gdiplus::Color(60, 60, 60);
+
         // Drawing the bar
+        graphics.FillRectangle(&Gdiplus::SolidBrush(outlineColor), (width - overlayBarWidth) / 2 - overlayBarOutlineSize, height - overlayBarHeight - overlayBarOutlineSize * 2,
+            overlayBarWidth + overlayBarOutlineSize * 2, overlayBarHeight + overlayBarOutlineSize * 2);
+
         Gdiplus::SolidBrush brush(color);
-        graphics.FillRectangle(&brush, (width - overlayBarWidth) / 2, height - overlayBarHeight,
+        graphics.FillRectangle(&brush, (width - overlayBarWidth) / 2, height - overlayBarHeight - overlayBarOutlineSize,
             overlayBarWidth, overlayBarHeight);
         
         // Drawing the text
-        drawFont(graphics, wideString, 18, 4, Gdiplus::Color(255, 255, 255), Gdiplus::Color(60, 60, 60), Gdiplus::FontFamily(L"Arial"));
+        drawFont(graphics, wideString, 18, 4, Gdiplus::Color(255, 255, 255), outlineColor, Gdiplus::FontFamily(L"Arial"));
 
         EndPaint(hwnd, &ps);
         break;
@@ -161,7 +171,7 @@ POINT getWindowCoords() {
         x += mi.rcMonitor.right - paddingX - width;
     }
     else if (leftOrRight == 3) {
-        x += (mi.rcMonitor.right - mi.rcMonitor.left) / 2 + paddingX - width / 2;
+        x += mi.rcMonitor.left + (mi.rcMonitor.right - mi.rcMonitor.left) / 2 + paddingX - width / 2;
     }
 
     int topOrBottom = settings.load()->overlayPositionTopBottomOrCenter;
@@ -172,7 +182,7 @@ POINT getWindowCoords() {
         y += mi.rcMonitor.bottom - paddingY - height;
     }
     else if (topOrBottom == 3) {
-        y += (mi.rcMonitor.bottom - mi.rcMonitor.top) / 2 + paddingY - height / 2;
+        y += mi.rcMonitor.top + (mi.rcMonitor.bottom - mi.rcMonitor.top) / 2 + paddingY - height / 2;
     }
 
     //std::cout << "A " << x << " " << y << "\n";

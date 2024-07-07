@@ -23,6 +23,8 @@ public:
 	int minimalGameWindowSizeY = 631;
 	bool ignoreManuallyLinkedWindows = true;
 	bool automaticallyReturnToLastWindow = true;
+	bool useSingleGlobalCooldownTimer = true;
+	int globalTimerCooldownValue = 15000;
 	
 	int overlayMonitorNumber = 1;
 	int overlayPositionTopBottomOrCenter = 2;
@@ -33,6 +35,7 @@ public:
 	int overlaySizeY = 40;
 	int overlayBarWidth = 80;
 	int overlayBarHeight = 5;
+	int overlayBarOutlineSize = 2;
 	int overlayTextSize = 18;
 	int overlayTextOutlineSize = 4;
 	int overlayTextVerticalOffset = -4;

@@ -3,6 +3,8 @@
 #include "InputRelated.h"
 //#include "DataStash.h"
 
+std::chrono::steady_clock::time_point globalLastSequenceInputTimestamp;
+
 Key::Key() {}
 
 Key::Key(std::string keyCode, bool enabled, int beforeKeyPress, int holdFor, int afterKeyPress) {
@@ -45,7 +47,7 @@ KeySequence::KeySequence(const YAML::Node& node) {
             }
         }
     }
-    cooldownPerWindow = getConfigLong(node, "cooldownPerWindow/cooldownDuration_milliseconds", 1000 * 30);
+    cooldownPerWindow = getConfigLong(node, "cooldownPerWindow/cooldownDuration_milliseconds", 1000 * 15);
     checkEveryOnWait = getConfigInt(node, "cooldownPerWindow/delayBetweenCheckingTwoWindowsOnCooldown_milliseconds", 100);
 }
 

@@ -25,22 +25,25 @@ Settings::Settings(const YAML::Node& config) {
 
 	automaticallyReturnToLastWindow = getConfigBool(config, "settings/macro/general/automaticallyReturnToPreviousWindow", automaticallyReturnToLastWindow);
 
-	overlayMonitorNumber = getConfigInt(config, "settings/stateOverlay/positions/window/monitorNumber", overlayMonitorNumber);
-	overlayPositionLeftRightOrCenter = std::clamp(getConfigInt(config, "settings/stateOverlay/positions/window/position/anchors/horizontal_number_leftRightCenter", overlayPositionLeftRightOrCenter), 1, 3);
-	overlayPositionTopBottomOrCenter = std::clamp(getConfigInt(config, "settings/stateOverlay/positions/window/position/anchors/vertical_number_topBottomCenter", overlayPositionTopBottomOrCenter), 1, 3);
+	useSingleGlobalCooldownTimer = getConfigBool(config, "settings/macro/general/singleGlobalCooldownTimer/enabled", useSingleGlobalCooldownTimer);
+	globalTimerCooldownValue = getConfigInt(config, "settings/macro/general/singleGlobalCooldownTimer/cooldownDuration_milliseconds", globalTimerCooldownValue);
 
-	overlayPositionPaddingX = getConfigInt(config, "settings/stateOverlay/positions/window/position/padding/horizontal", overlayPositionPaddingX);
-	overlayPositionPaddingY = getConfigInt(config, "settings/stateOverlay/positions/window/position/padding/vertical", overlayPositionPaddingY);
-	overlaySizeX = getConfigInt(config, "settings/stateOverlay/positions/window/size/horizontal", overlaySizeX);
-	overlaySizeY = getConfigInt(config, "settings/stateOverlay/positions/window/size/vertical", overlaySizeY);
+	overlayMonitorNumber = getConfigInt(config, "settings/stateOverlay/locations/window/monitorNumber", overlayMonitorNumber);
+	overlayPositionLeftRightOrCenter = std::clamp(getConfigInt(config, "settings/stateOverlay/locations/window/position/anchors/horizontalPoint_whichOne_leftRightCenter", overlayPositionLeftRightOrCenter), 1, 3);
+	overlayPositionTopBottomOrCenter = std::clamp(getConfigInt(config, "settings/stateOverlay/locations/window/position/anchors/verticalPoint_whichOne_topBottomCenter", overlayPositionTopBottomOrCenter), 1, 3);
+
+	overlayPositionPaddingX = getConfigInt(config, "settings/stateOverlay/locations/window/position/padding/horizontal", overlayPositionPaddingX);
+	overlayPositionPaddingY = getConfigInt(config, "settings/stateOverlay/locations/window/position/padding/vertical", overlayPositionPaddingY);
+	overlaySizeX = getConfigInt(config, "settings/stateOverlay/locations/window/size/horizontal", overlaySizeX);
+	overlaySizeY = getConfigInt(config, "settings/stateOverlay/locations/window/size/vertical", overlaySizeY);
 	
-	overlayBarWidth = getConfigInt(config, "settings/stateOverlay/positions/macroTimerIndicator/coloredBar/size/horizontal", overlayBarWidth);
-	overlayBarHeight = getConfigInt(config, "settings/stateOverlay/positions/macroTimerIndicator/coloredBar/size/vertical", overlayBarHeight);
+	overlayBarWidth = getConfigInt(config, "settings/stateOverlay/locations/macroTimerIndicator/coloredBar/size/horizontal", overlayBarWidth);
+	overlayBarHeight = getConfigInt(config, "settings/stateOverlay/locations/macroTimerIndicator/coloredBar/size/vertical", overlayBarHeight);
+	overlayBarOutlineSize = getConfigInt(config, "settings/stateOverlay/locations/macroTimerIndicator/coloredBar/outlineSize", overlayBarOutlineSize);
 
-
-	overlayTextSize = getConfigInt(config, "settings/stateOverlay/positions/macroTimerIndicator/valueText/textSize", overlayTextSize);
-	overlayTextOutlineSize = getConfigInt(config, "settings/stateOverlay/positions/macroTimerIndicator/valueText/outlineSize", overlayTextOutlineSize);
-	overlayTextVerticalOffset = getConfigInt(config, "settings/stateOverlay/positions/macroTimerIndicator/valueText/offsets/vertical", overlayTextVerticalOffset);
+	overlayTextSize = getConfigInt(config, "settings/stateOverlay/locations/macroTimerIndicator/valueText/textSize", overlayTextSize);
+	overlayTextOutlineSize = getConfigInt(config, "settings/stateOverlay/locations/macroTimerIndicator/valueText/outlineSize", overlayTextOutlineSize);
+	overlayTextVerticalOffset = getConfigInt(config, "settings/stateOverlay/locations/macroTimerIndicator/valueText/offsets/vertical", overlayTextVerticalOffset);
 }
 
 void RuntimeData::saveCurrentNonLinkedForgroundWindow() {

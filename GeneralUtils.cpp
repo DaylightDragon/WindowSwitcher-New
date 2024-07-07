@@ -99,8 +99,6 @@ MONITORINFO GetMonitorInfoByIndex(int monitorIndex) {
     if (monitorIndex < 0) monitorIndex = 0;
     if (monitorIndex >= monitorCount) monitorIndex = monitorCount - 1;
 
-    //std::cout << "Monitor " << monitorIndex << " of " << monitorCount << "\n";
-
     // Создаем структуру для передачи данных
     MonitorInfoData data;
     data.monitorIndex = monitorIndex;
@@ -109,6 +107,8 @@ MONITORINFO GetMonitorInfoByIndex(int monitorIndex) {
 
     // Перебираем все мониторы
     EnumDisplayMonitors(NULL, NULL, EnumMonitorCallback, (LPARAM)&data);
+
+    //std::cout << "Monitor " << monitorIndex << " of " << monitorCount << ": X " << data.info.rcMonitor.left << " - " << data.info.rcMonitor.right << ", Y " << data.info.rcMonitor.top << " - " << data.info.rcMonitor.bottom << "\n";
 
     return data.info;
 }

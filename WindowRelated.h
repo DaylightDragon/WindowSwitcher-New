@@ -4,6 +4,8 @@
 #include <vector>
 #include <chrono>
 
+extern std::chrono::steady_clock::time_point globalLastSequenceInputTimestamp;
+
 struct WindowInfo {
 	HWND hwnd;
 	std::chrono::steady_clock::time_point lastSequenceInputTimestamp;

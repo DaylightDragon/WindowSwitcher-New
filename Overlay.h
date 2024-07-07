@@ -11,7 +11,8 @@ enum OverlayState {
     NOT_INITIALIZED,
     NORMAL,
     SEQUENCE_READY,
-    SEQUENCE_ACTIVE
+    SEQUENCE_ACTIVE,
+    MACRO_DISABLED
 };
 
 void setOverlayState(OverlayState newState);

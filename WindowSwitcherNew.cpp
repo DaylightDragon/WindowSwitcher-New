@@ -108,6 +108,7 @@ std::unique_lock<std::mutex>* macroWaitLock = nullptr;
 std::atomic<float> overlayValue = -1;
 std::atomic<int> overlayActiveStateFullAmount;
 std::atomic<int> overlayActiveStateCurrentAmount;
+std::atomic<bool> globalCooldownWaveRn = false;
 
 // Debug related
 bool debugMode = IsDebuggerPresent();;
@@ -189,38 +190,6 @@ void registerHotkeys() {
     for (KeybindInfo info : *keybinds) {
         RegisterHotKeyFromText(failedHotkeys, info);
     }
-
-    //registerSingleHotkey(1, MOD_ALT | MOD_NOREPEAT, 0xBC, "Alt + ,", "Add window to current group");
-    //registerSingleHotkey(2, MOD_ALT | MOD_NOREPEAT, 0xBE, "Alt + .", "Prepare for the next group");
-    //registerSingleHotkey(11, MOD_ALT | MOD_NOREPEAT, 0x49, "Alt + I'", "Edit the window's group");
-    //registerSingleHotkey(3, MOD_ALT | MOD_NOREPEAT, 0x4B, "Alt + K'", "Shift windows to the left");
-    //registerSingleHotkey(4, MOD_ALT | MOD_NOREPEAT, 0x4C, "Alt + L'", "Shift windows to the right");
-    //registerSingleHotkey(5, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4B, "Ctrl + Alt + K'", "Shift ALL windows to the left");
-    //registerSingleHotkey(6, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x4C, "Ctrl + Alt + L'", "Shift ALL windows to the right");
-    //registerSingleHotkey(26, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4B, "Ctrl + Shift + K", "Shift ALL OTHER groups to the left");
-    //registerSingleHotkey(27, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x4C, "Ctrl + Shift + L", "Shift ALL OTHER groups to the right");
-    //registerSingleHotkey(7, MOD_ALT | MOD_NOREPEAT, 0xDD, "Alt + ]", "Remove current window from it's group (Critical Bug)");
-    //registerSingleHotkey(8, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0xDD, "Ctrl + Alt + ]", "Delete the entire group current window is in");
-    //registerSingleHotkey(15, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0xDB, "Ctrl + Shift + [", "Delete all groups");
-    //registerSingleHotkey(9, MOD_ALT | MOD_NOREPEAT, 0x51, "Alt + Q", "Toggle visibility of the opposite windows in this group (NOT SOON WIP)");
-    //registerSingleHotkey(13, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x51, "Ctrl + Alt + Q", "Toggle visibility of all not main windows (May not work properly yet with Auto-key macro)");
-    //// ctrl shift a do current alt a, but that one should leave window updating in background
-    //registerSingleHotkey(10, MOD_ALT | MOD_NOREPEAT, 0x41, "Alt + A", "Toggle visibility of every last window in all the pairs and minimize the linked ones");
-    //registerSingleHotkey(18, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x44, "(WIP) Ctrl + Shift + D", "Set the window as main in current group");
-    //registerSingleHotkey(19, MOD_ALT | MOD_NOREPEAT, 0x44, "Alt + D", "(WIP) Swap to main window in current group");
-    //registerSingleHotkey(23, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x44, "Ctrl + Alt + D", "(WIP) Swap to main window in all groups");
-    //registerSingleHotkey(12, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x55, "Ctrl + Alt + U", "Get all RBX and VMWW windows back from background");
-    //registerSingleHotkey(24, MOD_CONTROL | MOD_NOREPEAT, 0x55, "Ctrl + U", "Put current foregrounded window to background");
-    //registerSingleHotkey(25, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x55, "Ctrl + Shift + U", "Get specific windows from background by their name");
-    //registerSingleHotkey(16, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x56, "Ctrl + Shift + V", "(WIP, NOT SOON) Start/Stop adjusting new RBX windows to screen quarters");
-    //registerSingleHotkey(14, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x56, "Ctrl + Alt + V", "Connect all RBX windows to 4 quarter groups");
-    //registerSingleHotkey(30, MOD_ALT | MOD_NOREPEAT, 0x56, "Alt + V", "Connect absolutely all RBX windows into one single group");
-    //registerSingleHotkey(28, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x41, "Ctrl + Shift + A", "Bring all connected windows to foreground");
-    //registerSingleHotkey(17, MOD_ALT | MOD_NOREPEAT, 0x47, "Alt + G", "Start/stop the automatical sequence macro for Roblox windows");
-    //registerSingleHotkey(29, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x47, "Ctrl + Alt + G", "Set the macro key (or sequence) for this group");
-    //registerSingleHotkey(31, MOD_ALT | MOD_NOREPEAT, 0x48, "Alt + H", "Reload all configs");
-    //registerSingleHotkey(20, MOD_ALT | MOD_NOREPEAT, 0x50, "Alt + P", "Show the debug list of the linked windows", true);
-    //registerSingleHotkey(21, MOD_ALT | MOD_NOREPEAT, 0xDC, "Alt + \\", "Test", true);
 
     if (failedHotkeys.size() > 0) {
         std::cout << "\nFailed to register " << failedHotkeys.size() << " hotkey";
@@ -395,8 +364,31 @@ std::pair<OverlayState, float> getTheLeastCooldownPartition() {
     return std::pair<OverlayState, float>(itsState, leastValue);
 }
 
+bool isGlobalCooldownActive() {
+    long long timePassedSince;
+    timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalLastSequenceInputTimestamp).count();
+    //std::cout << "Global passed: " << timePassedSince << "\n";
+
+    bool cooldown = timePassedSince < settings.load()->globalTimerCooldownValue;
+
+    return cooldown;
+}
+
 void setNewOverlayValue() {
-    std::pair<OverlayState, float> leastValue = getTheLeastCooldownPartition();
+    if (stopMacroInput.load()) {
+        overlayValue.store(0);
+        setOverlayState(MACRO_DISABLED);
+        redrawOverlay();
+        return;
+    }
+
+    std::pair<OverlayState, float> leastValue;
+    if (settings.load()->useSingleGlobalCooldownTimer && isGlobalCooldownActive()) {
+        long long timePassed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalLastSequenceInputTimestamp).count();
+        leastValue = std::pair<OverlayState, float>(NORMAL, 1 - static_cast<float>(timePassed) / static_cast<float>(settings.load()->globalTimerCooldownValue));
+    }
+    else leastValue = getTheLeastCooldownPartition();
+
     if (leastValue.first == SEQUENCE_ACTIVE) {
         //std::cout << stopMacroInput.load() << " " << currentlyWaitingOnInterruption.load() << "\n";
     }
@@ -494,13 +486,19 @@ bool performASequence(HWND w) {
     return shouldRestartSequence;
 }
 
+// For the overlay data
 bool checkCooldownActive(HWND hwnd) {
     WindowInfo* wi = getWindowInfoFromHandle(hwnd);
     if (wi == nullptr) return false;
     KeySequence* keySeq = getKeySequenceFromHandle(hwnd);
     if (keySeq == nullptr) return false;
 
-    auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count();
+    bool singleTimer = settings.load()->useSingleGlobalCooldownTimer;
+
+    long long timePassedSince;
+    if (singleTimer) timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalLastSequenceInputTimestamp).count();
+    else timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count();
+
     bool cooldown = timePassedSince < keySeq->getCooldownPerWindow();
     //std::cout << timePassedSince << " " << keySeq->getCooldownPerWindow() << std::endl;
 
@@ -515,13 +513,25 @@ bool checkCooldownActiveAndRefresh(HWND hwnd) {
     KeySequence* keySeq = getKeySequenceFromHandle(hwnd);
     if (keySeq == nullptr) return false;
 
-    auto timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count(); // here
-    bool cooldown = timePassedSince < keySeq->getCooldownPerWindow();
+    bool singleTimer = settings.load()->useSingleGlobalCooldownTimer;
+
+    if (singleTimer) return false;
+
+    long long timePassedSince = 0;
+    //if(singleTimer) timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalLastSequenceInputTimestamp).count();
+    if(!singleTimer) timePassedSince = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wi->lastSequenceInputTimestamp).count();
+
+    bool cooldown;
+    if (!singleTimer) cooldown = timePassedSince < keySeq->getCooldownPerWindow();
     //std::cout << timePassedSince << " " << keySeq->getCooldownPerWindow() << std::endl;
 
     //std::cout << hwnd << '\n';
     //if(cooldown) std::cout << timePassedSince << '\n';
-    if (!cooldown) wi->refreshTimestamp();
+    if (!cooldown) {
+        if(!singleTimer) wi->refreshTimestamp(); 
+        //globalLastSequenceInputTimestamp = std::chrono::steady_clock::now();
+        //else wi->refreshTimestamp();
+    }
     return cooldown;
 }
 
@@ -579,6 +589,7 @@ bool focusAndSendSequence(HWND hwnd) { // find this
 
         customSleep(macroDelayAfterFocus);
 
+        //std::cout << "PerformASequence\n";
         shouldRestartSequence = performASequence(hwnd);
         anySequenceInputHappened = true;
     }
@@ -591,12 +602,30 @@ bool performInputsEverywhere() {
     overlayActiveStateFullAmount.store(handleToGroup.size());
     overlayActiveStateCurrentAmount.store(1);
 
-    for (auto& it : handleToGroup) {
-        if (stopMacroInput.load()) return true;
-        if (focusAndSendSequence(it.first)) anySequenceInputHappened = true;
-        customSleep(macroDelayBeforeSwitching);
+    bool fine = false;
+    if (!settings.load()->useSingleGlobalCooldownTimer) {
+        fine = true;
+    }
+    if (settings.load()->useSingleGlobalCooldownTimer && !isGlobalCooldownActive()) {
+        fine = true;
+        globalCooldownWaveRn.store(true);
+    }
 
-        overlayActiveStateCurrentAmount.store(overlayActiveStateCurrentAmount.load() + 1);
+    //std::cout << "Fine: " << fine << "\n";
+
+    if (fine) {
+        for (auto& it : handleToGroup) {
+            if (stopMacroInput.load()) return true;
+            //std::cout << "Sequence\n";
+            if (focusAndSendSequence(it.first)) anySequenceInputHappened = true;
+            customSleep(macroDelayBeforeSwitching);
+
+            overlayActiveStateCurrentAmount.store(overlayActiveStateCurrentAmount.load() + 1);
+        }
+        if (globalCooldownWaveRn.load()) {
+            globalLastSequenceInputTimestamp = std::chrono::steady_clock::now();
+        }
+        globalCooldownWaveRn.store(false);
     }
     return anySequenceInputHappened;
 }
@@ -643,6 +672,7 @@ void startUsualSequnceMode() {
             wi->lastSequenceInputTimestamp = std::chrono::steady_clock::time_point();
         }
     }
+    globalLastSequenceInputTimestamp = std::chrono::steady_clock::time_point();
 
     currentMacroLoopThread = new std::thread(startUsualMacroLoop);
 }
