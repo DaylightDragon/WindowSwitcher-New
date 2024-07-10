@@ -13,10 +13,11 @@
 #include <locale>
 #include <codecvt>
 
+HWND hwnd;
 std::atomic<bool> overlayVisible = false;
 std::atomic<OverlayState> state = NOT_INITIALIZED;
 
-HWND hwnd;
+int barColorDarkening = -150;
 
 void toggleOverlayVisibility() {
     overlayVisible.store(!overlayVisible);
@@ -125,9 +126,10 @@ LRESULT CALLBACK OverlayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
 
         Gdiplus::Color outlineColor = Gdiplus::Color(60, 60, 60);
+        Gdiplus::Color darkenedCurrentColor = changeBrightness(color, barColorDarkening);
 
         // Drawing the bar
-        graphics.FillRectangle(&Gdiplus::SolidBrush(outlineColor), (width - overlayBarWidth) / 2 - overlayBarOutlineSize, height - overlayBarHeight - overlayBarOutlineSize * 2,
+        graphics.FillRectangle(&Gdiplus::SolidBrush(darkenedCurrentColor), (width - overlayBarWidth) / 2 - overlayBarOutlineSize, height - overlayBarHeight - overlayBarOutlineSize * 2,
             overlayBarWidth + overlayBarOutlineSize * 2, overlayBarHeight + overlayBarOutlineSize * 2);
 
         Gdiplus::SolidBrush brush(color);

@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
 #include <Windows.h>
+#include <gdiplus.h>
 
 //getProgramFolderPath(string(argv[0]));
 std::string getProgramFolderPath(const std::string& programPath) {
@@ -111,4 +113,26 @@ MONITORINFO GetMonitorInfoByIndex(int monitorIndex) {
     //std::cout << "Monitor " << monitorIndex << " of " << monitorCount << ": X " << data.info.rcMonitor.left << " - " << data.info.rcMonitor.right << ", Y " << data.info.rcMonitor.top << " - " << data.info.rcMonitor.bottom << "\n";
 
     return data.info;
+}
+
+// It was not picking up the <algorythm> include
+
+#ifndef max
+#define max(a,b)            (((a) > (b)) ? (a) : (b))
+#endif
+
+#ifndef min
+#define min(a,b)            (((a) < (b)) ? (a) : (b))
+#endif
+
+Gdiplus::Color changeBrightness(Gdiplus::Color color, int brightnessCorrection) {
+    int red = color.GetR();
+    int green = color.GetG();
+    int blue = color.GetB();
+
+    red = max(1, min(255, red + brightnessCorrection));
+    green = max(1, min(255, green + brightnessCorrection));
+    blue = max(1, min(255, blue + brightnessCorrection));
+
+    return Gdiplus::Color(red, green, blue);
 }

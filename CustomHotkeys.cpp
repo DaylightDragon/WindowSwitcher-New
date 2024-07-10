@@ -204,6 +204,7 @@ std::vector<KeybindInfo>* getDefaultKeybinds() {
     result->push_back(KeybindInfo(31, "Alt + H", "reloadAllConfigs", "Reload all configs (NO KEYBINDS RELOADING FOR NOW)"));
     result->push_back(KeybindInfo(32, "Alt + /", "showHideConsole", "Show or hide the console window"));
     result->push_back(KeybindInfo(33, "Alt + N", "toggleStatusOverlay", "Toggle the status overlay's visibility").setDisabledByDefault(true));
+    result->push_back(KeybindInfo(34, "Alt + I", "showUiWindows", "Open Ui windows").setDisabledByDefault(true));
     result->push_back(KeybindInfo(20, "Alt + P", "showDebugListOfLinkedWindows", "Show the debug list of the linked windows").setDisabledByDefault(true).setHidden(true));
     result->push_back(KeybindInfo(21, "Alt + \\", "someTest", "Test").setDisabledByDefault(true).setHidden(true));
 

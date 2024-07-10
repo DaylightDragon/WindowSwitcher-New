@@ -9,11 +9,12 @@
 
 #include "WindowRelated.h"
 #include "Data.h"
+#include "gui/MainUi.h"
 
 extern std::map<std::string, int> mapOfKeys;
 extern std::map<HWND, WindowGroup*> handleToGroup;
-extern std::atomic<Settings*> settings;
-extern std::shared_mutex mapMutex; // MAY CAUSE CRASHES ON START!!!
+extern std::atomic<WindowSwitcher::Settings*> settings;
+//extern std::shared_mutex mapMutex; // MAY CAUSE CRASHES ON START!!!
 
 extern bool hideNotMainWindows;
 

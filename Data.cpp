@@ -7,7 +7,7 @@
 #include "WindowSwitcherNew.h"
 #include "Data.h"
 
-Settings::Settings(const YAML::Node& config) {
+WindowSwitcher::Settings::Settings(const YAML::Node& config) {
 	minCellsGridSizeX = getConfigInt(config, "settings/windowOperations/windowLinking/cellGrid/minCells/x", minCellsGridSizeX);
 	minCellsGridSizeY = getConfigInt(config, "settings/windowOperations/windowLinking/cellGrid/minCells/y", minCellsGridSizeY);
 	maxCellsGridSizeX = getConfigInt(config, "settings/windowOperations/windowLinking/cellGrid/maxCells/x", maxCellsGridSizeX);
@@ -46,7 +46,7 @@ Settings::Settings(const YAML::Node& config) {
 	overlayTextVerticalOffset = getConfigInt(config, "settings/stateOverlay/locations/macroTimerIndicator/valueText/offsets/vertical", overlayTextVerticalOffset);
 }
 
-void RuntimeData::saveCurrentNonLinkedForgroundWindow() {
+void WindowSwitcher::RuntimeData::saveCurrentNonLinkedForgroundWindow() {
 	if (!settings.load()->automaticallyReturnToLastWindow) {
 		previouslyActiveWindow.store(NULL);
 		return;
@@ -62,7 +62,7 @@ void RuntimeData::saveCurrentNonLinkedForgroundWindow() {
 	}
 }
 
-void RuntimeData::activatePrevActiveWindow() {
+void WindowSwitcher::RuntimeData::activatePrevActiveWindow() {
 	if (!settings.load()->automaticallyReturnToLastWindow) return;
 
 	HWND curForgr = GetForegroundWindow();

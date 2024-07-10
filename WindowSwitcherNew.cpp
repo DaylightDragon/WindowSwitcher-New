@@ -1,5 +1,7 @@
 ﻿// Window Switcher
 
+#include "WindowSwitcherNew.h"
+
 #pragma comment(lib, "Dwmapi.lib") // for DwmGetWindowAttribute and so on
 #pragma comment (lib, "gdiplus.lib")
 
@@ -21,8 +23,6 @@
 //#include <objidl.h>
 #include <gdiplus.h>
 
-#include "Ultralight/Ultralight.h"
-
 #include "ConfigOperations.h"
 #include "gui/ConsoleManagement.h"
 #include "InputRelated.h"
@@ -41,15 +41,15 @@ std::string currentVersion = "2.3";
 
 // Windows, sequences and managers
 std::map<HWND, WindowGroup*> handleToGroup;
-std::shared_mutex mapMutex; // MAY CAUSE CRASHES ON START!!!
+//std::shared_mutex mapMutex; // MAY CAUSE CRASHES ON START!!!
 std::map<WindowGroup*, KeySequence*> groupToSequence;
 WindowGroup* lastGroup;
 KeySequence* mainSequence;
 std::map<std::string, KeySequence*> knownOtherSequences = std::map<std::string, KeySequence*>();
 std::vector<std::string> failedHotkeys;
 std::atomic<InputsInterruptionManager*> interruptionManager;
-std::atomic<Settings*> settings;
-RuntimeData runtimeData;
+std::atomic<WindowSwitcher::Settings*> settings;
+WindowSwitcher::RuntimeData runtimeData;
 
 std::map<int, std::vector<HWND>> autoGroups;
 
@@ -352,7 +352,7 @@ std::pair<OverlayState, float> getCurrentCooldownPartitionForWindow(HWND hwnd) {
 std::pair<OverlayState, float> getTheLeastCooldownPartition() {
     float leastValue = 2;
     OverlayState itsState = NOT_INITIALIZED;
-    std::shared_lock<std::shared_mutex> lock(mapMutex); // MAY CAUSE CRASHES!!!
+    //std::shared_lock<std::shared_mutex> lock(mapMutex); // MAY CAUSE CRASHES!!!
     for (auto& it : handleToGroup) {
         std::pair<OverlayState, float> newValue = getCurrentCooldownPartitionForWindow(it.first);
         if (newValue.second < leastValue) {
@@ -707,7 +707,7 @@ void releaseConfiguredKey() {
 }
 
 void toggleKeySequenceMacroState() {
-    if (handleToGroup.size() == 0) {
+    if (handleToGroup.size() == 0 && stopMacroInput.load()) {
         std::cout << "You haven't linked any windows yet!\n";
     }
     else if (stopMacroInput.load()) {
@@ -1233,7 +1233,7 @@ void resetSettings(const YAML::Node& config) {
 
 void readNewSettings(const YAML::Node& config) {
     resetSettings(config);
-    settings = new Settings(config);
+    settings = new WindowSwitcher::Settings(config);
 }
 
 void rememberInitialPermanentSettings() {
@@ -1803,6 +1803,7 @@ int actualMain(HINSTANCE hInstance) {
     rememberInitialPermanentSettings();
     registerHotkeys();
     printConfigLoadingMessages();
+    //initUi();
 
     // Инициализируем GDI+
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
@@ -1905,6 +1906,9 @@ int actualMain(HINSTANCE hInstance) {
             }
             else if (msg.wParam == 33) {
                 toggleOverlayVisibility();
+            }
+            else if (msg.wParam == 34) {
+                //app.showUiWindows();
             }
             // EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE EDGE
             if (handleToGroup.count(curHwnd)) {
