@@ -57,7 +57,8 @@ void WindowSwitcher::RuntimeData::saveCurrentNonLinkedForgroundWindow() {
 	bool linkedManually = windowIsLinkedManually(hwnd);
 	bool linkedAutomatically = windowIsLinkedAutomatically(hwnd);
 	//std::cout << hwnd << ": " << linkedManually << ", " << linkedAutomatically << '\n';
-	if (!linkedManually && !linkedAutomatically) {
+	
+	if (!linkedManually && !linkedAutomatically) { // Commented, this was only to avoid a bug
 		previouslyActiveWindow.store(hwnd);
 	}
 }

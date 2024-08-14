@@ -6,6 +6,7 @@ HWND CreateOverlayWindow(HINSTANCE hInstance, const TCHAR* windowName, int opaci
 void redrawOverlay();
 void repositionTheOverlay();
 void toggleOverlayVisibility();
+bool getOverlayVisibility();
 
 enum OverlayState {
     NOT_INITIALIZED,

@@ -8,10 +8,13 @@ struct KeybindInfo {
     std::string hotkey;
     std::string internalName;
     std::string description;
+    bool modifierOnKeyUp = false;
     bool hidden = false;
     bool disabledByDefault = false;
 
     KeybindInfo(int id, std::string hotkey, std::string internalName, std::string description);
+
+    KeybindInfo& setModdifierOnKeyUp(bool onKeyUp);
 
     KeybindInfo& setHidden(bool hidden);
     KeybindInfo& setDisabledByDefault(bool disabled);

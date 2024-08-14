@@ -225,11 +225,11 @@ void InputsInterruptionManager::setShouldStartAnything(bool shouldStartAnything)
     this->shouldStartAnything.store(shouldStartAnything);
 }
 
-std::atomic<bool>& InputsInterruptionManager::getShouldStartDelayModificationLoop() {
+std::atomic<bool>& InputsInterruptionManager::getShouldStartDelayAndTimerThread() {
     return shouldStartDelayModificationLoop;
 }
 
-void InputsInterruptionManager::setShouldStartDelayModificationLoop(bool shouldStartDelayModificationLoop) {
+void InputsInterruptionManager::setShouldStartDelayAndTimerThread(bool shouldStartDelayModificationLoop) {
     this->shouldStartDelayModificationLoop.store(shouldStartDelayModificationLoop);
 }
 
@@ -239,6 +239,14 @@ std::atomic<bool>& InputsInterruptionManager::getShouldStartKeyboardHook() {
 
 void InputsInterruptionManager::setShouldStartKeyboardHook(bool shouldStartKeyboardHook) {
     this->shouldStartKeyboardHook.store(shouldStartKeyboardHook);
+}
+
+std::atomic<bool>& InputsInterruptionManager::getShouldStartTimerThread() {
+    return shouldStartKeyboardHook;
+}
+
+void InputsInterruptionManager::setShouldStartTimerThread(bool shouldStartTimerThread) {
+    this->shouldStartKeyboardHook.store(shouldStartTimerThread);
 }
 
 std::atomic<bool>& InputsInterruptionManager::getShouldStartMouseHook() {

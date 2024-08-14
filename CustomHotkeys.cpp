@@ -21,6 +21,11 @@ KeybindInfo::KeybindInfo(int id, std::string hotkey, std::string internalName, s
     this->description = description;
 }
 
+KeybindInfo& KeybindInfo::setModdifierOnKeyUp(bool onKeyUp) {
+    this->modifierOnKeyUp = onKeyUp;
+    return *this;
+}
+
 KeybindInfo& KeybindInfo::setHidden(bool hidden) {
     this->hidden = hidden;
     return *this;
@@ -35,8 +40,11 @@ YAML::Node* KeybindInfo::toNode() {
     YAML::Node* node = new YAML::Node();
     //setConfigValue(*node, "internalName", this->internalName);
     setConfigValue(*node, "description", this->description);
-    if(disabledByDefault) setConfigValue(*node, "hotkey", "Disabled " + this->hotkey);
+    
+    if(disabledByDefault) setConfigValue(*node, "hotkey", "Disabled " + this->hotkey); // TODO change
     else setConfigValue(*node, "hotkey", this->hotkey);
+
+    //if (modifierOnKeyUp) setConfigValue(*node, "modifiers/onKeyUp", this->modifierOnKeyUp);
     return node;
 }
 
@@ -51,12 +59,14 @@ int ParseHotKeyModifiers(const std::string& hotKeyModifiers) {
     bool hasAlt = hotKeyModifiers.find("alt") != std::string::npos;
     bool hasShift = hotKeyModifiers.find("shift") != std::string::npos;
     bool hasWin = hotKeyModifiers.find("win") != std::string::npos;
+    //bool hasOnKeyUp = hotKeyModifiers.find("onkeyup") != std::string::npos;
 
     int modifiers = 0;
     if (hasCtrl) modifiers |= MOD_CONTROL;
     if (hasAlt) modifiers |= MOD_ALT;
     if (hasShift) modifiers |= MOD_SHIFT;
     if (hasWin) modifiers |= MOD_WIN;
+    //if (hasOnKeyUp) modifiers |= MOD_ON_KEYUP;
 
     // Always include MOD_NOREPEAT
     modifiers |= MOD_NOREPEAT;
@@ -155,18 +165,26 @@ bool RegisterHotKeyFromText(std::vector<std::string>& failedHotkeys, KeybindInfo
     WORD hotKey = ParseHotkeyCode(info.hotkey);
     int modifiers = ParseHotKeyModifiers(info.hotkey);
 
+    // Extra modifiers
+    if (info.modifierOnKeyUp) modifiers |= MOD_ON_KEYUP;
+
+    //std::cout << "OnKeyUp " << (info.modifierOnKeyUp) << "\n"; // (modifiers & MOD_ON_KEYUP)
+
     // Making it prettier
     info.hotkey = makeHkStringPretty(info.hotkey);
 
-    //std::cout << modifiers << ' ' << hotKey << '\n';
-    if (hotKey != -1) if (RegisterHotKey(NULL, info.id, modifiers, hotKey)) {
-        //cout << hotKey << '\n';
-        if (!info.hidden) std::cout << "Hotkey '" << info.hotkey << "': " << info.description << "\n";
-        return true;
-    }
-    else {
-        failedHotkeys.push_back(info.hotkey + " (" + info.description + ")");
-        return false;
+    //std::cout << info.id << " " << hotKey << " " << modifiers << '\n';
+
+    if (hotKey != -1) { // ?
+        if (RegisterHotKey(NULL, info.id, modifiers, hotKey)) {
+            //cout << hotKey << '\n';
+            if (!info.hidden) std::cout << "Hotkey '" << info.hotkey << "': " << info.description << "\n";
+            return true;
+        }
+        else {
+            failedHotkeys.push_back("\"" + info.hotkey + "\" (" + info.description + ")");
+            return false;
+        }
     }
 }
 
@@ -200,13 +218,17 @@ std::vector<KeybindInfo>* getDefaultKeybinds() {
     result->push_back(KeybindInfo(14, "Ctrl + Alt + V", "connectAllGameWindowsToQuarters", "Connect all game windows to 4 quarter groups"));
     result->push_back(KeybindInfo(28, "Ctrl + Shift + A", "bringAllConnectedWindowsToForeground", "Bring all connected windows to foreground"));
     result->push_back(KeybindInfo(17, "Alt + G", "toggleSequenceMacro", "Start/stop the automatical sequence macro for game windows"));
+    result->push_back(KeybindInfo(35, "Alt + Shift + J", "skipToNextMacroLoopStart", "Skip macro cooldown or reset the loop").setModdifierOnKeyUp(true));
+    result->push_back(KeybindInfo(36, "Alt + J", "stopCurrentMacroWindowLoop", "Stop current macro loop"));
     result->push_back(KeybindInfo(29, "Ctrl + Alt + G", "setMacroKeyOrSequenceForGroup", "Set the macro key (or sequence) for this group"));
+    result->push_back(KeybindInfo(33, "Alt + N", "toggleStatusOverlay", "Toggle the status overlay's visibility"));
+    //result->push_back(KeybindInfo(34, "Alt + I", "showUiWindows", "Open Ui windows").setDisabledByDefault(true));
     result->push_back(KeybindInfo(31, "Alt + H", "reloadAllConfigs", "Reload all configs (NO KEYBINDS RELOADING FOR NOW)"));
     result->push_back(KeybindInfo(32, "Alt + /", "showHideConsole", "Show or hide the console window"));
-    result->push_back(KeybindInfo(33, "Alt + N", "toggleStatusOverlay", "Toggle the status overlay's visibility").setDisabledByDefault(true));
-    result->push_back(KeybindInfo(34, "Alt + I", "showUiWindows", "Open Ui windows").setDisabledByDefault(true));
     result->push_back(KeybindInfo(20, "Alt + P", "showDebugListOfLinkedWindows", "Show the debug list of the linked windows").setDisabledByDefault(true).setHidden(true));
     result->push_back(KeybindInfo(21, "Alt + \\", "someTest", "Test").setDisabledByDefault(true).setHidden(true));
+    
+    // Last 36
 
     return result;
 }
@@ -243,6 +265,7 @@ void readNewKeybinds(YAML::Node& config) {
             std::string userHotkey = getConfigString(userNode, "hotkey", info.hotkey);
             setConfigValue(*node, "hotkey", userHotkey);
             info.hotkey = userHotkey;
+            info.modifierOnKeyUp = getConfigBool(*node, "modifiers/onKeyUp", false, true);
             //cout << info.hotkey << "\n";
         }
 

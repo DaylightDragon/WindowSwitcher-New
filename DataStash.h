@@ -18,6 +18,16 @@ enum InterruptionInputType {
     ANY_INPUT
 };
 
+struct MacroThreadInstance {};
+
+struct MacroWindowLoopInstance {};
+
+struct MacroThreadFullInfoInstance {
+    MacroThreadInstance* threadInstance = nullptr;
+    MacroWindowLoopInstance* loopInstance = nullptr;
+    bool shouldApplyInitialDelay = false;
+};
+
 extern std::string defaultMacroKey;
 extern std::map<std::string, int> mapOfKeys;
 extern std::map<int, std::string> keyboardHookSpecialVirtualKeyCodeToText;

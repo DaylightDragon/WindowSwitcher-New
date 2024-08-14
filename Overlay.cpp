@@ -25,6 +25,10 @@ void toggleOverlayVisibility() {
     else ShowWindow(hwnd, SW_SHOW);
 }
 
+bool getOverlayVisibility() {
+    return overlayVisible.load();
+}
+
 void setOverlayState(OverlayState newState) {
     state.store(newState);
 }

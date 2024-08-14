@@ -129,12 +129,15 @@ public:
     void setInformOnEvents(bool informOnEvents);
     std::atomic<bool>& getShouldStartAnything();
     void setShouldStartAnything(bool shouldStartAnything);
-    std::atomic<bool>& getShouldStartDelayModificationLoop();
-    void setShouldStartDelayModificationLoop(bool shouldStartDelayModificationLoop);
+    std::atomic<bool>& getShouldStartDelayAndTimerThread();
+    void setShouldStartDelayAndTimerThread(bool shouldStartDelayModificationLoop);
     std::atomic<bool>& getShouldStartKeyboardHook();
     void setShouldStartKeyboardHook(bool shouldStartKeyboardHook);
     std::atomic<bool>& getShouldStartMouseHook();
     void setShouldStartMouseHook(bool shouldStartMouseHook);
+
+    std::atomic<bool>& InputsInterruptionManager::getShouldStartTimerThread();
+    void InputsInterruptionManager::setShouldStartTimerThread(bool shouldStartTimerThread);
 
     // important getters
 

@@ -9,7 +9,6 @@
 
 #include "WindowRelated.h"
 #include "Data.h"
-#include "gui/MainUi.h"
 
 extern std::map<std::string, int> mapOfKeys;
 extern std::map<HWND, WindowGroup*> handleToGroup;

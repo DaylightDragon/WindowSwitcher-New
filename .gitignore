@@ -361,3 +361,12 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/resources/icons/ic1.ico
+/resources/icons/ic10.ico
+/resources/icons/ic2.ico
+/resources/icons/ic3.ico
+/resources/icons/ic5.ico
+/resources/icons/ic7.ico
+/resources/icons/ic8.ico
+/resources/icons/ic9.ico
+/assets
